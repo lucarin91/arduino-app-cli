@@ -128,14 +128,19 @@ func HandleUpdateEvents(updater *update.Manager) http.HandlerFunc {
 					return
 				}
 				if event.Type == update.ErrorEvent {
+					err := event.GetError()
+					code := render.InternalServiceErr
+					if c := update.GetUpdateErrorCode(err); c != update.UnknownError {
+						code = render.SSEErrCode(string(c))
+					}
 					sseStream.SendError(render.SSEErrorData{
-						Code:    render.InternalServiceErr,
-						Message: event.Data,
+						Code:    code,
+						Message: err.Error(),
 					})
 				} else {
 					sseStream.Send(render.SSEEvent{
 						Type: event.Type.String(),
-						Data: event.Data,
+						Data: event.GetData(),
 					})
 				}
 

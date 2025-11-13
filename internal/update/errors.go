@@ -38,7 +38,6 @@ func (e *UpdateError) Unwrap() error {
 
 func NewUnkownError(err error) *UpdateError {
 	return &UpdateError{
-		Code:    "UNKNOWN_ERROR",
 		Details: err.Error(),
 		err:     err,
 	}

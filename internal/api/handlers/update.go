@@ -54,6 +54,7 @@ func HandleCheckUpgradable(updater *update.Manager) http.HandlerFunc {
 				Code:    string(code),
 				Details: err.Error(),
 			})
+			return
 		}
 		if len(pkgs) == 0 {
 			render.EncodeResponse(w, http.StatusNoContent, nil)

@@ -227,7 +227,6 @@ func (a *ADBConnection) Remove(path string) error {
 
 type ADBCommand struct {
 	cmd *paths.Process
-
 	err error
 }
 

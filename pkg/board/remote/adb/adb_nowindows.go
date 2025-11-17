@@ -18,11 +18,14 @@
 package adb
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"io"
 
 	"github.com/arduino/go-paths-helper"
+
+	"github.com/arduino/arduino-app-cli/pkg/board/remote"
 )
 
 func adbReadFile(a *ADBConnection, path string) (io.ReadCloser, error) {
@@ -37,12 +40,14 @@ func adbReadFile(a *ADBConnection, path string) (io.ReadCloser, error) {
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-	defer func() {
-		go func() {
-			_ = cmd.Wait()
-		}()
-	}()
-	return output, nil
+	return remote.WithCloser{
+		Reader: output,
+		CloseFun: func() error {
+			err1 := output.Close()
+			err2 := cmd.Wait()
+			return cmp.Or(err1, err2)
+		},
+	}, nil
 }
 
 func adbWriteFile(a *ADBConnection, r io.Reader, pathStr string) error {

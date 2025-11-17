@@ -37,6 +37,11 @@ func adbReadFile(a *ADBConnection, path string) (io.ReadCloser, error) {
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
+	defer func() {
+		go func() {
+			_ = cmd.Wait()
+		}()
+	}()
 	return output, nil
 }
 

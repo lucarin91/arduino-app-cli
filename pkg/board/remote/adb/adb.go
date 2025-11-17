@@ -120,6 +120,7 @@ func (a *ADBConnection) List(path string) ([]remote.FileInfo, error) {
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
+	defer cmd.Wait()
 
 	r := bufio.NewReader(output)
 	_, err = r.ReadBytes('\n') // Skip the first line
@@ -167,6 +168,7 @@ func (a *ADBConnection) Stats(p string) (remote.FileInfo, error) {
 	if err := cmd.Start(); err != nil {
 		return remote.FileInfo{}, err
 	}
+	defer cmd.Wait()
 
 	r := bufio.NewReader(output)
 	line, err := r.ReadBytes('\n')

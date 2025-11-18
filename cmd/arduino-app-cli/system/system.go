@@ -37,7 +37,8 @@ import (
 
 func NewSystemCmd(cfg config.Configuration) *cobra.Command {
 	cmd := &cobra.Command{
-		Use: "system",
+		Use:   "system",
+		Short: "Manage the board’s system configuration",
 	}
 
 	cmd.AddCommand(newDownloadImageCmd(cfg))

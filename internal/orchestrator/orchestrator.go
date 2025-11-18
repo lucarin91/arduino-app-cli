@@ -377,10 +377,20 @@ func getVideoDevices() map[int]string {
 	return deviceMap
 }
 
-func stopAppWithCmd(ctx context.Context, app app.ArduinoApp, cmd string) iter.Seq[StreamMessage] {
+func stopAppWithCmd(ctx context.Context, docker command.Cli, app app.ArduinoApp, cmd string) iter.Seq[StreamMessage] {
 	return func(yield func(StreamMessage) bool) {
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
+
+		appStatus, err := getAppStatus(ctx, docker, app)
+		if err != nil {
+			yield(StreamMessage{error: err})
+			return
+		}
+		if appStatus.Status != StatusStarting && appStatus.Status != StatusRunning {
+			yield(StreamMessage{data: fmt.Sprintf("app %q is not running", app.Name)})
+			return
+		}
 
 		if !yield(StreamMessage{data: fmt.Sprintf("Stopping app %q", app.Name)}) {
 			return
@@ -395,6 +405,7 @@ func stopAppWithCmd(ctx context.Context, app app.ArduinoApp, cmd string) iter.Se
 				return
 			}
 		})
+
 		if app.MainSketchPath != nil {
 			// TODO: check that the app sketch is running before attempting to stop it.
 
@@ -425,12 +436,12 @@ func stopAppWithCmd(ctx context.Context, app app.ArduinoApp, cmd string) iter.Se
 	}
 }
 
-func StopApp(ctx context.Context, app app.ArduinoApp) iter.Seq[StreamMessage] {
-	return stopAppWithCmd(ctx, app, "stop")
+func StopApp(ctx context.Context, dockerClient command.Cli, app app.ArduinoApp) iter.Seq[StreamMessage] {
+	return stopAppWithCmd(ctx, dockerClient, app, "stop")
 }
 
-func StopAndDestroyApp(ctx context.Context, app app.ArduinoApp) iter.Seq[StreamMessage] {
-	return stopAppWithCmd(ctx, app, "down")
+func StopAndDestroyApp(ctx context.Context, dockerClient command.Cli, app app.ArduinoApp) iter.Seq[StreamMessage] {
+	return stopAppWithCmd(ctx, dockerClient, app, "down")
 }
 
 func RestartApp(
@@ -458,7 +469,7 @@ func RestartApp(
 				return
 			}
 
-			stopStream := StopApp(ctx, *runningApp)
+			stopStream := StopApp(ctx, docker, *runningApp)
 			for msg := range stopStream {
 				if !yield(msg) {
 					return
@@ -888,12 +899,19 @@ func CloneApp(
 	return CloneAppResponse{ID: id}, nil
 }
 
-func DeleteApp(ctx context.Context, app app.ArduinoApp) error {
-	for msg := range StopApp(ctx, app) {
-		if msg.error != nil {
-			return fmt.Errorf("failed to stop app: %w", msg.error)
+func DeleteApp(ctx context.Context, dockerClient command.Cli, app app.ArduinoApp) error {
+
+	runningApp, err := getRunningApp(ctx, dockerClient.Client())
+	if err != nil {
+		return err
+	}
+	if runningApp != nil && runningApp.FullPath.EqualsTo(app.FullPath) {
+		// We try to remove docker related resources at best effort
+		for range StopAndDestroyApp(ctx, dockerClient, app) {
+			// just consume the iterator
 		}
 	}
+
 	return app.FullPath.RemoveAll()
 }
 

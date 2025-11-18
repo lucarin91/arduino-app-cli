@@ -14,7 +14,7 @@ const (
 var (
 	ErrOperationAlreadyInProgress = &UpdateError{
 		Code:    OperationInProgress,
-		Details: " an operation is already in progress",
+		Details: "an operation is already in progress",
 	}
 	ErrNoInternetConnection = &UpdateError{
 		Code:    NoInternetConnection,

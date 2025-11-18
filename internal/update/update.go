@@ -153,7 +153,8 @@ func (m *Manager) UpgradePackages(ctx context.Context, pkgs []UpgradablePackage)
 		for e := range aptEvents {
 			m.broadcast(e)
 		}
-		m.broadcast(NewDataEvent(DoneEvent, "Upgrade completed successfully"))
+
+		m.broadcast(NewDataEvent(DoneEvent, "Update completed"))
 	}()
 	return nil
 }

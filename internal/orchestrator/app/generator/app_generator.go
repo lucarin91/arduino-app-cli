@@ -19,6 +19,7 @@ import (
 	"embed"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path"
 	"strconv"
@@ -152,13 +153,14 @@ func generateApp(basePath *paths.Path, appDesc app.AppDescriptor) error {
 	}
 
 	if err := copyRootFiles(); err != nil {
-		return fmt.Errorf("copy root files: %w", err)
-	}
-	if err := generateAppYaml(basePath, appDesc); err != nil {
-		return fmt.Errorf("generate app.yaml: %w", err)
+		slog.Warn("error copying root files for app %q: %w", appDesc.Name, err)
 	}
 	if err := generateReadme(basePath, appDesc); err != nil {
-		return fmt.Errorf("generate README.md: %w", err)
+		slog.Warn("error generating readme for app %q: %w", appDesc.Name, err)
+	}
+
+	if err := generateAppYaml(basePath, appDesc); err != nil {
+		return fmt.Errorf("generate app.yaml: %w", err)
 	}
 
 	return nil

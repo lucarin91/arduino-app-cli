@@ -6,9 +6,9 @@ type ErrorCode string
 
 // TODO: add the error to the openAPI spec as an enum
 const (
-	NoInternetConnection ErrorCode = "NO_INTERNET_CONNECTION"
-	OperationInProgress  ErrorCode = "OPERATION_IN_PROGRESS"
-	UnknownError         ErrorCode = "UNKNOWN_ERROR"
+	NoInternetConnectionCode ErrorCode = "NO_INTERNET_CONNECTION"
+	OperationInProgressCode  ErrorCode = "OPERATION_IN_PROGRESS"
+	UnknownErrorCode         ErrorCode = "UNKNOWN_ERROR"
 )
 
 var (

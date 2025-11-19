@@ -236,9 +236,7 @@ func (a *ArduinoPlatformUpdater) UpgradePackages(ctx context.Context, names []st
 
 		cbw := orchestrator.NewCallbackWriter(func(line string) {
 			// TODO: add termination
-			if !yield(update.NewDataEvent(update.UpgradeLineEvent, line)) {
-				return
-			}
+			_ = yield(update.NewDataEvent(update.UpgradeLineEvent, line))
 		})
 
 		err := srv.BurnBootloader(

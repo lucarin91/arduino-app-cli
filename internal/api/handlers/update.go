@@ -85,7 +85,7 @@ func HandleUpdateApply(updater *update.Manager) http.HandlerFunc {
 		pkgs, err := updater.ListUpgradablePackages(r.Context(), filterFunc)
 		if err != nil {
 			code := update.GetUpdateErrorCode(err)
-			if code == update.ErrOperationAlreadyInProgress.Code {
+			if code == update.OperationInProgress {
 				render.EncodeResponse(w, http.StatusConflict, models.ErrorResponse{
 					Code:    string(code),
 					Details: err.Error(),

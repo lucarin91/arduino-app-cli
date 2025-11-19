@@ -19,6 +19,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
 	"log/slog"
 	"sync"
 
@@ -125,40 +126,42 @@ func (a *ArduinoPlatformUpdater) ListUpgradablePackages(ctx context.Context, _ f
 }
 
 // UpgradePackages implements ServiceUpdater.
-func (a *ArduinoPlatformUpdater) UpgradePackages(ctx context.Context, names []string) (<-chan update.Event, error) {
+func (a *ArduinoPlatformUpdater) UpgradePackages(ctx context.Context, names []string) (iter.Seq[update.Event], error) {
 	if !a.lock.TryLock() {
 		return nil, update.ErrOperationAlreadyInProgress
 	}
-	eventsCh := make(chan update.Event, 100)
 
-	downloadProgressCB := func(curr *rpc.DownloadProgress) {
-		data := helpers.ArduinoCLIDownloadProgressToString(curr)
-		slog.Debug("Download progress", slog.String("download_progress", data))
-		eventsCh <- update.NewDataEvent(update.UpgradeLineEvent, data)
-	}
-	taskProgressCB := func(msg *rpc.TaskProgress) {
-		data := helpers.ArduinoCLITaskProgressToString(msg)
-		slog.Debug("Task progress", slog.String("task_progress", data))
-		eventsCh <- update.NewDataEvent(update.UpgradeLineEvent, data)
-	}
-
-	go func() {
+	return func(yield func(update.Event) bool) {
 		defer a.lock.Unlock()
-		defer close(eventsCh)
 
-		eventsCh <- update.NewDataEvent(update.StartEvent, "Upgrade is starting")
+		downloadProgressCB := func(curr *rpc.DownloadProgress) {
+			data := helpers.ArduinoCLIDownloadProgressToString(curr)
+			slog.Debug("Download progress", slog.String("download_progress", data))
+			// TODO: add termination
+			_ = yield(update.NewDataEvent(update.UpgradeLineEvent, data))
+		}
+		taskProgressCB := func(msg *rpc.TaskProgress) {
+			data := helpers.ArduinoCLITaskProgressToString(msg)
+			slog.Debug("Task progress", slog.String("task_progress", data))
+			// TODO: add termination
+			_ = yield(update.NewDataEvent(update.UpgradeLineEvent, data))
+		}
+
+		if !yield(update.NewDataEvent(update.StartEvent, "Upgrade is starting")) {
+			return
+		}
 
 		logrus.SetLevel(logrus.ErrorLevel) // Reduce the log level of arduino-cli
 		srv := commands.NewArduinoCoreServer()
 
 		if err := setConfig(ctx, srv); err != nil {
-			eventsCh <- update.NewErrorEvent(fmt.Errorf("error setting config: %w", err))
+			_ = yield(update.NewErrorEvent(fmt.Errorf("error setting config: %w", err)))
 			return
 		}
 
 		var inst *rpc.Instance
 		if resp, err := srv.Create(ctx, &rpc.CreateRequest{}); err != nil {
-			eventsCh <- update.NewErrorEvent(fmt.Errorf("error creating arduino-cli instance: %w", err))
+			_ = yield(update.NewErrorEvent(fmt.Errorf("error creating arduino-cli instance: %w", err)))
 			return
 		} else {
 			inst = resp.GetInstance()
@@ -174,11 +177,11 @@ func (a *ArduinoPlatformUpdater) UpgradePackages(ctx context.Context, names []st
 		{
 			stream, _ := commands.UpdateIndexStreamResponseToCallbackFunction(ctx, downloadProgressCB)
 			if err := srv.UpdateIndex(&rpc.UpdateIndexRequest{Instance: inst}, stream); err != nil {
-				eventsCh <- update.NewErrorEvent(fmt.Errorf("error updating index: %w", err))
+				_ = yield(update.NewErrorEvent(fmt.Errorf("error updating index: %w", err)))
 				return
 			}
 			if err := srv.Init(&rpc.InitRequest{Instance: inst}, commands.InitStreamResponseToCallbackFunction(ctx, nil)); err != nil {
-				eventsCh <- update.NewErrorEvent(fmt.Errorf("error initializing instance: %w", err))
+				_ = yield(update.NewErrorEvent(fmt.Errorf("error initializing instance: %w", err)))
 				return
 			}
 		}
@@ -200,13 +203,13 @@ func (a *ArduinoPlatformUpdater) UpgradePackages(ctx context.Context, names []st
 		); err != nil {
 			var alreadyPresent *cmderrors.PlatformAlreadyAtTheLatestVersionError
 			if errors.As(err, &alreadyPresent) {
-				eventsCh <- update.NewDataEvent(update.UpgradeLineEvent, alreadyPresent.Error())
+				_ = yield(update.NewDataEvent(update.UpgradeLineEvent, alreadyPresent.Error()))
 				return
 			}
 
 			var notFound *cmderrors.PlatformNotFoundError
 			if !errors.As(err, &notFound) {
-				eventsCh <- update.NewErrorEvent(fmt.Errorf("error upgrading platform: %w", err))
+				_ = yield(update.NewErrorEvent(fmt.Errorf("error upgrading platform: %w", err)))
 				return
 			}
 			// If the platform is not found, we will try to install it
@@ -223,16 +226,19 @@ func (a *ArduinoPlatformUpdater) UpgradePackages(ctx context.Context, names []st
 				),
 			)
 			if err != nil {
-				eventsCh <- update.NewErrorEvent(fmt.Errorf("error installing platform: %w", err))
+				_ = yield(update.NewErrorEvent(fmt.Errorf("error installing platform: %w", err)))
 				return
 			}
 		} else if respCB().GetPlatform() == nil {
-			eventsCh <- update.NewErrorEvent(fmt.Errorf("platform upgrade failed"))
+			_ = yield(update.NewErrorEvent(fmt.Errorf("platform upgrade failed")))
 			return
 		}
 
 		cbw := orchestrator.NewCallbackWriter(func(line string) {
-			eventsCh <- update.NewDataEvent(update.UpgradeLineEvent, line)
+			// TODO: add termination
+			if !yield(update.NewDataEvent(update.UpgradeLineEvent, line)) {
+				return
+			}
 		})
 
 		err := srv.BurnBootloader(
@@ -244,10 +250,8 @@ func (a *ArduinoPlatformUpdater) UpgradePackages(ctx context.Context, names []st
 			commands.BurnBootloaderToServerStreams(ctx, cbw, cbw),
 		)
 		if err != nil {
-			eventsCh <- update.NewErrorEvent(fmt.Errorf("error burning bootloader: %w", err))
+			_ = yield(update.NewErrorEvent(fmt.Errorf("error burning bootloader: %w", err)))
 			return
 		}
-	}()
-
-	return eventsCh, nil
+	}, nil
 }

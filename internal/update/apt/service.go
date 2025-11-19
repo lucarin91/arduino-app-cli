@@ -73,44 +73,50 @@ func (s *Service) ListUpgradablePackages(ctx context.Context, matcher func(updat
 // UpgradePackages upgrades the specified packages using the `apt-get upgrade` command.
 // It publishes events to subscribers during the upgrade process.
 // It returns an error if the upgrade is already in progress or if the upgrade command fails.
-func (s *Service) UpgradePackages(ctx context.Context, names []string) (<-chan update.Event, error) {
+func (s *Service) UpgradePackages(ctx context.Context, names []string) (iter.Seq[update.Event], error) {
 	if !s.lock.TryLock() {
 		return nil, update.ErrOperationAlreadyInProgress
 	}
-	eventsCh := make(chan update.Event, 100)
 
-	go func() {
+	return func(yield func(update.Event) bool) {
 		defer s.lock.Unlock()
-		defer close(eventsCh)
 
-		eventsCh <- update.NewDataEvent(update.StartEvent, "Upgrade is starting")
-		stream := runUpgradeCommand(ctx, names)
-		for line, err := range stream {
+		if !yield(update.NewDataEvent(update.StartEvent, "Upgrade is starting")) {
+			return
+		}
+		for line, err := range runUpgradeCommand(ctx, names) {
 			if err != nil {
-				eventsCh <- update.NewErrorEvent(fmt.Errorf("error running upgrade command: %w", err))
+				_ = yield(update.NewErrorEvent(fmt.Errorf("error running upgrade command: %w", err)))
 				return
 			}
-			eventsCh <- update.NewDataEvent(update.UpgradeLineEvent, line)
+			if !yield(update.NewDataEvent(update.UpgradeLineEvent, line)) {
+				return
+			}
 		}
 
-		eventsCh <- update.NewDataEvent(update.StartEvent, "apt cleaning cache is starting")
+		if !yield(update.NewDataEvent(update.StartEvent, "apt cleaning cache is starting")) {
+			return
+		}
 		for line, err := range runAptCleanCommand(ctx) {
 			if err != nil {
-				eventsCh <- update.NewErrorEvent(fmt.Errorf("error running apt clean command: %w", err))
+				_ = yield(update.NewErrorEvent(fmt.Errorf("error running apt clean command: %w", err)))
 				return
 			}
-			eventsCh <- update.NewDataEvent(update.UpgradeLineEvent, line)
+			if !yield(update.NewDataEvent(update.UpgradeLineEvent, line)) {
+				return
+			}
 		}
 
-		eventsCh <- update.NewDataEvent(update.UpgradeLineEvent, "Stop and destroy docker containers and images ....")
-		streamCleanup := cleanupDockerContainers(ctx)
-		for line, err := range streamCleanup {
+		if !yield(update.NewDataEvent(update.UpgradeLineEvent, "Stop and destroy docker containers and images ....")) {
+			return
+		}
+		for line, err := range cleanupDockerContainers(ctx) {
 			if err != nil {
 				// TODO: maybe we should retun an error or a better feedback to the user?
 				// currently, we just log the error and continue considenring not blocking
 				slog.Warn("Error stopping and destroying docker containers", "error", err)
-			} else {
-				eventsCh <- update.NewDataEvent(update.UpgradeLineEvent, line)
+			} else if !yield(update.NewDataEvent(update.UpgradeLineEvent, line)) {
+				return
 			}
 		}
 
@@ -118,25 +124,27 @@ func (s *Service) UpgradePackages(ctx context.Context, names []string) (<-chan u
 		// Tracking issue: https://github.com/arduino/arduino-app-cli/issues/600
 		// Currently, we need to launch `arduino-app-cli system init` to pull the latest docker images because
 		// the version of the docker images are hardcoded in the (new downloaded) version of the arduino-app-cli.
-		eventsCh <- update.NewDataEvent(update.UpgradeLineEvent, "Pulling the latest docker images ...")
-		streamDocker := pullDockerImages(ctx)
-		for line, err := range streamDocker {
-			if err != nil {
-				eventsCh <- update.NewErrorEvent(fmt.Errorf("error pulling docker images: %w", err))
-				return
-			}
-			eventsCh <- update.NewDataEvent(update.UpgradeLineEvent, line)
-		}
-		eventsCh <- update.NewDataEvent(update.RestartEvent, "Upgrade completed. Restarting ...")
-
-		err := restartServices(ctx)
-		if err != nil {
-			eventsCh <- update.NewErrorEvent(fmt.Errorf("error restarting services after upgrade: %w", err))
+		if !yield(update.NewDataEvent(update.UpgradeLineEvent, "Pulling the latest docker images ...")) {
 			return
 		}
-	}()
+		for line, err := range pullDockerImages(ctx) {
+			if err != nil {
+				_ = yield(update.NewErrorEvent(fmt.Errorf("error pulling docker images: %w", err)))
+				return
+			}
+			if !yield(update.NewDataEvent(update.UpgradeLineEvent, line)) {
+				return
+			}
+		}
+		if !yield(update.NewDataEvent(update.RestartEvent, "Upgrade completed. Restarting ...")) {
+			return
+		}
 
-	return eventsCh, nil
+		if err := restartServices(ctx); err != nil {
+			_ = yield(update.NewErrorEvent(fmt.Errorf("error restarting services after upgrade: %w", err)))
+			return
+		}
+	}, nil
 }
 
 // runDpkgConfigureCommand is need in case an upgrade was interrupted in the middle

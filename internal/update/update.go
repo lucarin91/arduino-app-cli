@@ -18,6 +18,7 @@ package update
 import (
 	"context"
 	"fmt"
+	"iter"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -46,7 +47,7 @@ type UpgradablePackage struct {
 
 type ServiceUpdater interface {
 	ListUpgradablePackages(ctx context.Context, matcher func(UpgradablePackage) bool) ([]UpgradablePackage, error)
-	UpgradePackages(ctx context.Context, names []string) (<-chan Event, error)
+	UpgradePackages(ctx context.Context, names []string) (iter.Seq[Event], error)
 }
 
 type Manager struct {

@@ -102,7 +102,7 @@ func (s *Service) UpgradePackages(ctx context.Context, names []string) (<-chan u
 			eventsCh <- update.NewDataEvent(update.UpgradeLineEvent, line)
 		}
 
-		eventsCh <- update.NewDataEvent(update.UpgradeLineEvent, "Apt upgrade completed successfully.")
+		eventsCh <- update.NewDataEvent(update.UpgradeLineEvent, "Stop and destroy docker containers and images ....")
 		streamCleanup := cleanupDockerContainers(ctx)
 		for line, err := range streamCleanup {
 			if err != nil {

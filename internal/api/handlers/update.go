@@ -43,7 +43,7 @@ func HandleCheckUpgradable(updater *update.Manager) http.HandlerFunc {
 		pkgs, err := updater.ListUpgradablePackages(r.Context(), filterFunc)
 		if err != nil {
 			code := update.GetUpdateErrorCode(err)
-			if code == update.OperationInProgress {
+			if code == update.OperationInProgressCode {
 				render.EncodeResponse(w, http.StatusConflict, models.ErrorResponse{
 					Code:    string(code),
 					Details: err.Error(),
@@ -85,7 +85,7 @@ func HandleUpdateApply(updater *update.Manager) http.HandlerFunc {
 		pkgs, err := updater.ListUpgradablePackages(r.Context(), filterFunc)
 		if err != nil {
 			code := update.GetUpdateErrorCode(err)
-			if code == update.OperationInProgress {
+			if code == update.OperationInProgressCode {
 				render.EncodeResponse(w, http.StatusConflict, models.ErrorResponse{
 					Code:    string(code),
 					Details: err.Error(),
@@ -107,7 +107,7 @@ func HandleUpdateApply(updater *update.Manager) http.HandlerFunc {
 		err = updater.UpgradePackages(r.Context(), pkgs)
 		if err != nil {
 			code := update.GetUpdateErrorCode(err)
-			if code == update.OperationInProgress {
+			if code == update.OperationInProgressCode {
 				render.EncodeResponse(w, http.StatusConflict, models.ErrorResponse{
 					Code:    string(code),
 					Details: err.Error(),
@@ -148,7 +148,7 @@ func HandleUpdateEvents(updater *update.Manager) http.HandlerFunc {
 				if event.Type == update.ErrorEvent {
 					err := event.GetError()
 					code := render.InternalServiceErr
-					if c := update.GetUpdateErrorCode(err); c != update.UnknownError {
+					if c := update.GetUpdateErrorCode(err); c != update.UnknownErrorCode {
 						code = render.SSEErrCode(string(c))
 					}
 					sseStream.SendError(render.SSEErrorData{

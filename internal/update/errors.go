@@ -13,11 +13,11 @@ const (
 
 var (
 	ErrOperationAlreadyInProgress = &UpdateError{
-		Code:    OperationInProgress,
+		Code:    OperationInProgressCode,
 		Details: "an operation is already in progress",
 	}
 	ErrNoInternetConnection = &UpdateError{
-		Code:    NoInternetConnection,
+		Code:    NoInternetConnectionCode,
 		Details: "no internet connection available",
 	}
 )
@@ -51,5 +51,5 @@ func GetUpdateErrorCode(err error) ErrorCode {
 			return updateError.Code
 		}
 	}
-	return UnknownError
+	return UnknownErrorCode
 }

@@ -11,12 +11,12 @@ import (
 func TestUpdateError(t *testing.T) {
 	t.Run("known error", func(t *testing.T) {
 		var err error = &UpdateError{
-			Code:    NoInternetConnection,
+			Code:    NoInternetConnectionCode,
 			Details: "no internet connection available",
 		}
 		assert.Equal(t, "no internet connection available", err.Error())
 		assert.Equal(t, "no internet connection available", fmt.Sprintf("%s", err))
-		assert.Equal(t, NoInternetConnection, GetUpdateErrorCode(err))
+		assert.Equal(t, NoInternetConnectionCode, GetUpdateErrorCode(err))
 	})
 
 	t.Run("unknown error", func(t *testing.T) {
@@ -27,6 +27,6 @@ func TestUpdateError(t *testing.T) {
 		assert.Equal(t, "underlying error", fmt.Sprintf("%s", updateErr))
 		assert.Equal(t, underlyingErr, errors.Unwrap(updateErr))
 		assert.True(t, errors.Is(updateErr, underlyingErr))
-		assert.Equal(t, UnknownError, GetUpdateErrorCode(updateErr))
+		assert.Equal(t, UnknownErrorCode, GetUpdateErrorCode(updateErr))
 	})
 }

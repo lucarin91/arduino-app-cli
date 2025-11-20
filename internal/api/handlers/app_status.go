@@ -34,6 +34,12 @@ func HandlerAppStatus(
 	cfg config.Configuration,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Handle HEAD requests with erly return
+		if r.Method == http.MethodHead {
+			render.EncodeResponse(w, http.StatusOK, nil)
+			return
+		}
+
 		sseStream, err := render.NewSSEStream(r.Context(), w)
 		if err != nil {
 			slog.Error("Unable to create SSE stream", slog.String("error", err.Error()))

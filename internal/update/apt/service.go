@@ -287,7 +287,10 @@ func restartServices(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return needRestartCmd.RunWithinContext(ctx)
+	if out, err := needRestartCmd.RunAndCaptureCombinedOutput(ctx); err != nil {
+		return fmt.Errorf("error running needrestart command: %w: %s", err, out)
+	}
+	return nil
 }
 
 func listUpgradablePackages(ctx context.Context, matcher func(update.UpgradablePackage) bool) ([]update.UpgradablePackage, error) {

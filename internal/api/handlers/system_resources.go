@@ -26,13 +26,8 @@ import (
 
 func HandleSystemResources() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Handle HEAD requests with early return
-		if r.Method == http.MethodHead {
-			render.EncodeResponse(w, http.StatusOK, nil)
-			return
-		}
-
-		sseStream, err := render.NewSSEStream(r.Context(), w)
+		ctx := r.Context()
+		sseStream, err := render.NewSSEStream(ctx, w)
 		if err != nil {
 			slog.Error("Unable to create SSE stream", slog.String("error", err.Error()))
 			render.EncodeResponse(w, http.StatusInternalServerError, models.ErrorResponse{Details: "unable to create SSE stream"})
@@ -40,7 +35,7 @@ func HandleSystemResources() http.HandlerFunc {
 		}
 		defer sseStream.Close()
 
-		resources, err := orchestrator.SystemResources(r.Context(), nil)
+		resources, err := orchestrator.SystemResources(ctx, nil)
 		if err != nil {
 			sseStream.SendError(render.SSEErrorData{
 				Code:    render.InternalServiceErr,

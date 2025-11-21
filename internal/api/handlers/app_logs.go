@@ -80,12 +80,6 @@ func HandleAppLogs(
 			Follow:           follow,
 		}
 
-		// Handle HEAD requests with early return
-		if r.Method == http.MethodHead {
-			render.EncodeResponse(w, http.StatusOK, nil)
-			return
-		}
-
 		sseStream, err := render.NewSSEStream(r.Context(), w)
 		if err != nil {
 			slog.Error("Unable to create SSE stream", slog.String("error", err.Error()))

@@ -127,6 +127,13 @@ func HandleUpdateApply(updater *update.Manager) http.HandlerFunc {
 
 func HandleUpdateEvents(updater *update.Manager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// HOTFIX: app-lab use HEAD requests to check endpoint availability
+		// so we need to handle them here by early return without opening SSE stream
+		if r.Method == http.MethodHead {
+			render.EncodeResponse(w, http.StatusOK, nil)
+			return
+		}
+
 		sseStream, err := render.NewSSEStream(r.Context(), w)
 		if err != nil {
 			slog.Error("Unable to create SSE stream", slog.String("error", err.Error()))

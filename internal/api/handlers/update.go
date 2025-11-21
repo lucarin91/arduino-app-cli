@@ -127,7 +127,8 @@ func HandleUpdateApply(updater *update.Manager) http.HandlerFunc {
 
 func HandleUpdateEvents(updater *update.Manager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Handle HEAD requests with early return
+		// HOTFIX: app-lab use HEAD requests to check endpoint availability
+		// so we need to handle them here by early return without opening SSE stream
 		if r.Method == http.MethodHead {
 			render.EncodeResponse(w, http.StatusOK, nil)
 			return

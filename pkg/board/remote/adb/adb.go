@@ -47,11 +47,11 @@ var _ remote.RemoteConn = (*ADBConnection)(nil)
 const username = "arduino"
 
 var (
-	// NotFoundErr is returned when the ADB device is not found.
-	NotFoundErr = fmt.Errorf("ADB device not found")
-	// DeviceOfflineErr is returned when the ADB device is not reachable.
+	// ErrNotFound is returned when the ADB device is not found.
+	ErrNotFound = fmt.Errorf("ADB device not found")
+	// ErrDeviceOffline is returned when the ADB device is not reachable.
 	// This usually requires a restart of the adbd server daemon on the device.
-	DeviceOfflineErr = fmt.Errorf("ADB device is offline")
+	ErrDeviceOffline = fmt.Errorf("ADB device is offline")
 )
 
 // FromSerial creates an ADBConnection from a device serial number.
@@ -70,9 +70,9 @@ func FromSerial(serial string, adbPath string) (*ADBConnection, error) {
 		output, err := cmd.RunAndCaptureCombinedOutput(context.TODO())
 		if err != nil {
 			if bytes.Contains(output, []byte("device offline")) {
-				return false, DeviceOfflineErr
+				return false, ErrDeviceOffline
 			} else if bytes.Contains(output, []byte("not found")) {
-				return false, NotFoundErr
+				return false, ErrNotFound
 			}
 			return false, fmt.Errorf("failed to get ADB device state: %w: %s", err, output)
 		}

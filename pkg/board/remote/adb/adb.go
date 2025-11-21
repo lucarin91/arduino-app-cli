@@ -36,14 +36,6 @@ import (
 	"github.com/arduino/arduino-app-cli/pkg/x/ports"
 )
 
-var (
-	// NotFoundErr is returned when the ADB device is not found.
-	NotFoundErr = fmt.Errorf("ADB device not found")
-	// DeviceOfflineErr is returned when the ADB device is not reachable.
-	// This usually requires a restart of the adbd server daemon on the device.
-	DeviceOfflineErr = fmt.Errorf("ADB device is offline")
-)
-
 type ADBConnection struct {
 	adbPath string
 	host    string
@@ -54,19 +46,49 @@ var _ remote.RemoteConn = (*ADBConnection)(nil)
 
 const username = "arduino"
 
+var (
+	// NotFoundErr is returned when the ADB device is not found.
+	NotFoundErr = fmt.Errorf("ADB device not found")
+	// DeviceOfflineErr is returned when the ADB device is not reachable.
+	// This usually requires a restart of the adbd server daemon on the device.
+	DeviceOfflineErr = fmt.Errorf("ADB device is offline")
+)
+
+// FromSerial creates an ADBConnection from a device serial number.
+// returns an error NotFoundErr if the device is not found, and DeviceOfflineErr if the device is offline.
 func FromSerial(serial string, adbPath string) (*ADBConnection, error) {
 	if adbPath == "" {
 		adbPath = FindAdbPath()
 	}
 
-	conn := ADBConnection{host: serial, adbPath: adbPath}
-	if connected, err := conn.IsConnected(); err != nil {
+	isConnected := func(serial, adbPath string) (bool, error) {
+		cmd, err := paths.NewProcess(nil, adbPath, "-s", serial, "get-state")
+		if err != nil {
+			return false, fmt.Errorf("failed to create ADB command: %w", err)
+		}
+
+		output, err := cmd.RunAndCaptureCombinedOutput(context.TODO())
+		if err != nil {
+			if bytes.Contains(output, []byte("device offline")) {
+				return false, DeviceOfflineErr
+			} else if bytes.Contains(output, []byte("not found")) {
+				return false, NotFoundErr
+			}
+			return false, fmt.Errorf("failed to get ADB device state: %w: %s", err, output)
+		}
+
+		return string(bytes.TrimSpace(output)) == "device", nil
+	}
+	if connected, err := isConnected(adbPath, serial); err != nil {
 		return nil, err
 	} else if !connected {
 		return nil, fmt.Errorf("device %s is not connected", serial)
 	}
 
-	return &conn, nil
+	return &ADBConnection{
+		adbPath: adbPath,
+		host:    serial,
+	}, nil
 }
 
 func FromHost(host string, adbPath string) (*ADBConnection, error) {
@@ -77,30 +99,10 @@ func FromHost(host string, adbPath string) (*ADBConnection, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("failed to connect to ADB host %s: %w", host, err)
+	if out, err := cmd.RunAndCaptureCombinedOutput(context.TODO()); err != nil {
+		return nil, fmt.Errorf("failed to connect to ADB host %s: %w: %s", host, err, out)
 	}
 	return FromSerial(host, adbPath)
-}
-
-// IsConnected checks if the ADB device is connected and online.
-func (a *ADBConnection) IsConnected() (bool, error) {
-	cmd, err := paths.NewProcess(nil, a.adbPath, "-s", a.host, "get-state")
-	if err != nil {
-		return false, fmt.Errorf("failed to create ADB command: %w", err)
-	}
-
-	output, err := cmd.RunAndCaptureCombinedOutput(context.TODO())
-	if err != nil {
-		if bytes.Contains(output, []byte("device offline")) {
-			return false, DeviceOfflineErr
-		} else if bytes.Contains(output, []byte("not found")) {
-			return false, NotFoundErr
-		}
-		return false, fmt.Errorf("failed to get ADB device state: %w: %s", err, output)
-	}
-
-	return string(bytes.TrimSpace(output)) == "device", nil
 }
 
 func (a *ADBConnection) Forward(ctx context.Context, localPort int, remotePort int) error {

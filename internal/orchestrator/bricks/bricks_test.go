@@ -53,16 +53,27 @@ func TestBrickCreate(t *testing.T) {
 		}}
 		err = brickService.BrickCreate(req, f.Must(app.Load("testdata/dummy-app")))
 		require.Error(t, err)
-		require.Equal(t, "variable \"ARDUINO_DEVICE_ID\" cannot be empty", err.Error())
+		require.Equal(t, "required variable \"ARDUINO_DEVICE_ID\" cannot be empty", err.Error())
 	})
 
-	t.Run("fails if a mandatory variable is not present in the request", func(t *testing.T) {
+	t.Run("do not fail if a mandatory variable is not present", func(t *testing.T) {
+		tempDummyApp := paths.New("testdata/dummy-app.temp")
+		err := tempDummyApp.RemoveAll()
+		require.Nil(t, err)
+		require.Nil(t, paths.New("testdata/dummy-app").CopyDirTo(tempDummyApp))
+
 		req := BrickCreateUpdateRequest{ID: "arduino:arduino_cloud", Variables: map[string]string{
 			"ARDUINO_SECRET": "a-secret-a",
 		}}
-		err = brickService.BrickCreate(req, f.Must(app.Load("testdata/dummy-app")))
-		require.Error(t, err)
-		require.Equal(t, "required variable \"ARDUINO_DEVICE_ID\" is mandatory", err.Error())
+		err = brickService.BrickCreate(req, f.Must(app.Load(tempDummyApp.String())))
+		require.NoError(t, err)
+
+		after, err := app.Load(tempDummyApp.String())
+		require.Nil(t, err)
+		require.Len(t, after.Descriptor.Bricks, 1)
+		require.Equal(t, "arduino:arduino_cloud", after.Descriptor.Bricks[0].ID)
+		require.Equal(t, "", after.Descriptor.Bricks[0].Variables["ARDUINO_DEVICE_ID"])
+		require.Equal(t, "a-secret-a", after.Descriptor.Bricks[0].Variables["ARDUINO_SECRET"])
 	})
 
 	t.Run("the brick is added if it does not exist in the app", func(t *testing.T) {
@@ -79,6 +90,7 @@ func TestBrickCreate(t *testing.T) {
 		require.Len(t, after.Descriptor.Bricks, 2)
 		require.Equal(t, "arduino:dbstorage_sqlstore", after.Descriptor.Bricks[1].ID)
 	})
+
 	t.Run("the variables of a brick are updated", func(t *testing.T) {
 		tempDummyApp := paths.New("testdata/dummy-app.brick-override.temp")
 		err := tempDummyApp.RemoveAll()
@@ -109,6 +121,122 @@ func TestBrickCreate(t *testing.T) {
 		require.Equal(t, deviceID, after.Descriptor.Bricks[0].Variables["ARDUINO_DEVICE_ID"])
 		require.Equal(t, secret, after.Descriptor.Bricks[0].Variables["ARDUINO_SECRET"])
 	})
+}
+
+func TestUpdateBrick(t *testing.T) {
+	bricksIndex, err := bricksindex.GenerateBricksIndexFromFile(paths.New("testdata"))
+	require.Nil(t, err)
+	brickService := NewService(nil, bricksIndex, nil)
+
+	t.Run("fails if brick id does not exist into brick index", func(t *testing.T) {
+		err = brickService.BrickUpdate(BrickCreateUpdateRequest{ID: "not-existing-id"}, f.Must(app.Load("testdata/dummy-app")))
+		require.Error(t, err)
+		require.Equal(t, "brick \"not-existing-id\" not found into the brick index", err.Error())
+	})
+
+	t.Run("fails if brick is present into the index but not in the app ", func(t *testing.T) {
+		err = brickService.BrickUpdate(BrickCreateUpdateRequest{ID: "arduino:dbstorage_sqlstore"}, f.Must(app.Load("testdata/dummy-app")))
+		require.Error(t, err)
+		require.Equal(t, "brick \"arduino:dbstorage_sqlstore\" not found into the bricks of the app", err.Error())
+	})
+
+	t.Run("fails if the updated variable is not present in the brick definition", func(t *testing.T) {
+		req := BrickCreateUpdateRequest{ID: "arduino:arduino_cloud", Variables: map[string]string{
+			"NON_EXISTING_VARIABLE": "some-value",
+		}}
+		err = brickService.BrickUpdate(req, f.Must(app.Load("testdata/dummy-app")))
+		require.Error(t, err)
+		require.Equal(t, "variable \"NON_EXISTING_VARIABLE\" does not exist on brick \"arduino:arduino_cloud\"", err.Error())
+	})
+
+	// TODO: allow to set an empty "" variable
+	t.Run("fails if a required variable is set empty", func(t *testing.T) {
+		req := BrickCreateUpdateRequest{ID: "arduino:arduino_cloud", Variables: map[string]string{
+			"ARDUINO_DEVICE_ID": "",
+			"ARDUINO_SECRET":    "a-secret-a",
+		}}
+		err = brickService.BrickUpdate(req, f.Must(app.Load("testdata/dummy-app")))
+		require.Error(t, err)
+		require.Equal(t, "required variable \"ARDUINO_DEVICE_ID\" cannot be empty", err.Error())
+	})
+
+	t.Run("allow updating only one mandatory variable among two", func(t *testing.T) {
+		tempDummyApp := paths.New("testdata/dummy-app.temp")
+		err := tempDummyApp.RemoveAll()
+		require.Nil(t, err)
+		require.Nil(t, paths.New("testdata/dummy-app").CopyDirTo(tempDummyApp))
+
+		req := BrickCreateUpdateRequest{ID: "arduino:arduino_cloud", Variables: map[string]string{
+			"ARDUINO_SECRET": "a-secret-a",
+		}}
+		err = brickService.BrickUpdate(req, f.Must(app.Load(tempDummyApp.String())))
+		require.NoError(t, err)
+
+		after, err := app.Load(tempDummyApp.String())
+		require.Nil(t, err)
+		require.Len(t, after.Descriptor.Bricks, 1)
+		require.Equal(t, "arduino:arduino_cloud", after.Descriptor.Bricks[0].ID)
+		require.Equal(t, "", after.Descriptor.Bricks[0].Variables["ARDUINO_DEVICE_ID"])
+		require.Equal(t, "a-secret-a", after.Descriptor.Bricks[0].Variables["ARDUINO_SECRET"])
+	})
+
+	t.Run("update a single variables of a brick correctly", func(t *testing.T) {
+		tempDummyApp := paths.New("testdata/dummy-app.temp")
+		require.Nil(t, tempDummyApp.RemoveAll())
+		require.Nil(t, paths.New("testdata/dummy-app").CopyDirTo(tempDummyApp))
+		bricksIndex, err := bricksindex.GenerateBricksIndexFromFile(paths.New("testdata"))
+		require.Nil(t, err)
+		brickService := NewService(nil, bricksIndex, nil)
+
+		deviceID := "updated-device-id"
+		secret := "updated-secret"
+		req := BrickCreateUpdateRequest{
+			ID: "arduino:arduino_cloud",
+			Variables: map[string]string{
+				"ARDUINO_DEVICE_ID": deviceID,
+				"ARDUINO_SECRET":    secret,
+			},
+		}
+
+		err = brickService.BrickUpdate(req, f.Must(app.Load(tempDummyApp.String())))
+		require.Nil(t, err)
+
+		after, err := app.Load(tempDummyApp.String())
+		require.Nil(t, err)
+		require.Len(t, after.Descriptor.Bricks, 1)
+		require.Equal(t, "arduino:arduino_cloud", after.Descriptor.Bricks[0].ID)
+		require.Equal(t, deviceID, after.Descriptor.Bricks[0].Variables["ARDUINO_DEVICE_ID"])
+		require.Equal(t, secret, after.Descriptor.Bricks[0].Variables["ARDUINO_SECRET"])
+	})
+
+	t.Run("update a single variable correctly", func(t *testing.T) {
+		tempDummyApp := paths.New("testdata/dummy-app-for-update.temp")
+		require.Nil(t, tempDummyApp.RemoveAll())
+		require.Nil(t, paths.New("testdata/dummy-app-for-update").CopyDirTo(tempDummyApp))
+		bricksIndex, err := bricksindex.GenerateBricksIndexFromFile(paths.New("testdata"))
+		require.Nil(t, err)
+		brickService := NewService(nil, bricksIndex, nil)
+
+		secret := "updated-the-secret"
+		req := BrickCreateUpdateRequest{
+			ID: "arduino:arduino_cloud",
+			Variables: map[string]string{
+				// the ARDUINO_DEVICE_ID is already configured int the app.yaml
+				"ARDUINO_SECRET": secret,
+			},
+		}
+
+		err = brickService.BrickUpdate(req, f.Must(app.Load(tempDummyApp.String())))
+		require.Nil(t, err)
+
+		after, err := app.Load(tempDummyApp.String())
+		require.Nil(t, err)
+		require.Len(t, after.Descriptor.Bricks, 1)
+		require.Equal(t, "arduino:arduino_cloud", after.Descriptor.Bricks[0].ID)
+		require.Equal(t, "i-am-a-device-id", after.Descriptor.Bricks[0].Variables["ARDUINO_DEVICE_ID"])
+		require.Equal(t, secret, after.Descriptor.Bricks[0].Variables["ARDUINO_SECRET"])
+	})
+
 }
 
 func TestGetBrickInstanceVariableDetails(t *testing.T) {

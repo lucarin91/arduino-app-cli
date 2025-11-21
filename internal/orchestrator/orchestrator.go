@@ -114,13 +114,19 @@ func StartApp(
 	provisioner *Provision,
 	modelsIndex *modelsindex.ModelsIndex,
 	bricksIndex *bricksindex.BricksIndex,
-	app app.ArduinoApp,
+	appToStart app.ArduinoApp,
 	cfg config.Configuration,
 	staticStore *store.StaticStore,
 ) iter.Seq[StreamMessage] {
 	return func(yield func(StreamMessage) bool) {
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
+
+		err := app.ValidateBricks(appToStart.Descriptor, bricksIndex)
+		if err != nil {
+			yield(StreamMessage{error: err})
+			return
+		}
 
 		running, err := getRunningApp(ctx, docker.Client())
 		if err != nil {
@@ -131,7 +137,7 @@ func StartApp(
 			yield(StreamMessage{error: fmt.Errorf("app %q is running", running.Name)})
 			return
 		}
-		if !yield(StreamMessage{data: fmt.Sprintf("Starting app %q", app.Name)}) {
+		if !yield(StreamMessage{data: fmt.Sprintf("Starting app %q", appToStart.Name)}) {
 			return
 		}
 
@@ -148,11 +154,11 @@ func StartApp(
 		if !yield(StreamMessage{progress: &Progress{Name: "preparing", Progress: 0.0}}) {
 			return
 		}
-		if app.MainSketchPath != nil {
+		if appToStart.MainSketchPath != nil {
 			if !yield(StreamMessage{progress: &Progress{Name: "sketch compiling and uploading", Progress: 0.0}}) {
 				return
 			}
-			if err := compileUploadSketch(ctx, &app, sketchCallbackWriter); err != nil {
+			if err := compileUploadSketch(ctx, &appToStart, sketchCallbackWriter); err != nil {
 				yield(StreamMessage{error: err})
 				return
 			}
@@ -161,15 +167,15 @@ func StartApp(
 			}
 		}
 
-		if app.MainPythonFile != nil {
-			envs := getAppEnvironmentVariables(app, bricksIndex, modelsIndex)
+		if appToStart.MainPythonFile != nil {
+			envs := getAppEnvironmentVariables(appToStart, bricksIndex, modelsIndex)
 
 			if !yield(StreamMessage{data: "python provisioning"}) {
 				cancel()
 				return
 			}
 			provisionStartProgress := float32(0.0)
-			if app.MainSketchPath != nil {
+			if appToStart.MainSketchPath != nil {
 				provisionStartProgress = 10.0
 			}
 
@@ -177,7 +183,7 @@ func StartApp(
 				return
 			}
 
-			if err := provisioner.App(ctx, bricksIndex, &app, cfg, envs, staticStore); err != nil {
+			if err := provisioner.App(ctx, bricksIndex, &appToStart, cfg, envs, staticStore); err != nil {
 				yield(StreamMessage{error: err})
 				return
 			}
@@ -188,10 +194,10 @@ func StartApp(
 			}
 
 			// Launch the docker compose command to start the app
-			overrideComposeFile := app.AppComposeOverrideFilePath()
+			overrideComposeFile := appToStart.AppComposeOverrideFilePath()
 
 			commands := []string{}
-			commands = append(commands, "docker", "compose", "-f", app.AppComposeFilePath().String())
+			commands = append(commands, "docker", "compose", "-f", appToStart.AppComposeFilePath().String())
 			if ok, _ := overrideComposeFile.ExistCheck(); ok {
 				commands = append(commands, "-f", overrideComposeFile.String())
 			}

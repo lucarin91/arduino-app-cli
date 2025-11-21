@@ -36,6 +36,8 @@ import (
 	"github.com/arduino/arduino-app-cli/pkg/x/ports"
 )
 
+const username = "arduino"
+
 type ADBConnection struct {
 	adbPath string
 	host    string
@@ -43,8 +45,6 @@ type ADBConnection struct {
 
 // Ensures ADBConnection implements the RemoteConn interface at compile time.
 var _ remote.RemoteConn = (*ADBConnection)(nil)
-
-const username = "arduino"
 
 var (
 	// ErrNotFound is returned when the ADB device is not found.

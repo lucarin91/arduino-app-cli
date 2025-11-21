@@ -26,7 +26,7 @@ import (
 
 func HandleSystemResources() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Handle HEAD requests with erly return
+		// Handle HEAD requests with early return
 		if r.Method == http.MethodHead {
 			render.EncodeResponse(w, http.StatusOK, nil)
 			return

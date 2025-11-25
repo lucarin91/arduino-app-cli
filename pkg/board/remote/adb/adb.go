@@ -69,6 +69,7 @@ func FromSerial(serial string, adbPath string) (*ADBConnection, error) {
 
 		output, err := cmd.RunAndCaptureCombinedOutput(context.TODO())
 		if err != nil {
+			slog.Error("unable to connect to ADB device", "error", err, "output", string(output), "serial", serial)
 			if bytes.Contains(output, []byte("device offline")) {
 				return false, ErrDeviceOffline
 			} else if bytes.Contains(output, []byte("not found")) {

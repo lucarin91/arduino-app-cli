@@ -80,6 +80,7 @@ func FromSerial(serial string, adbPath string) (*ADBConnection, error) {
 
 		return string(bytes.TrimSpace(output)) == "device", nil
 	}
+
 	if connected, err := isConnected(serial, adbPath); err != nil {
 		return nil, err
 	} else if !connected {

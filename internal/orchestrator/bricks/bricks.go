@@ -58,12 +58,13 @@ func (s *Service) List() (BrickListResult, error) {
 	res := BrickListResult{Bricks: make([]BrickListItem, len(s.bricksIndex.Bricks))}
 	for i, brick := range s.bricksIndex.Bricks {
 		res.Bricks[i] = BrickListItem{
-			ID:          brick.ID,
-			Name:        brick.Name,
-			Author:      "Arduino", // TODO: for now we only support our bricks
-			Description: brick.Description,
-			Category:    brick.Category,
-			Status:      "installed",
+			ID:           brick.ID,
+			Name:         brick.Name,
+			Author:       "Arduino", // TODO: for now we only support our bricks
+			Description:  brick.Description,
+			Category:     brick.Category,
+			Status:       "installed",
+			RequireModel: brick.RequireModel,
 		}
 	}
 	return res, nil
@@ -85,6 +86,7 @@ func (s *Service) AppBrickInstancesList(a *app.ArduinoApp) (AppBrickInstancesRes
 			Author:          "Arduino", // TODO: for now we only support our bricks
 			Category:        brick.Category,
 			Status:          "installed",
+			RequireModel:    brick.RequireModel,
 			ModelID:         brickInstance.Model, // TODO: in case is not set by the user, should we return the default model?
 			Variables:       variablesMap,        // TODO: do we want to show also the default value of not explicitly set variables?
 			ConfigVariables: configVariables,
@@ -118,6 +120,7 @@ func (s *Service) AppBrickInstanceDetails(a *app.ArduinoApp, brickID string) (Br
 		Author:          "Arduino", // TODO: for now we only support our bricks
 		Category:        brick.Category,
 		Status:          "installed", // For now every Arduino brick are installed
+		RequireModel:    brick.RequireModel,
 		Variables:       variables,
 		ConfigVariables: configVariables,
 		ModelID:         modelID,
@@ -203,6 +206,7 @@ func (s *Service) BricksDetails(id string, idProvider *app.IDProvider,
 		Author:       "Arduino", // TODO: for now we only support our bricks
 		Description:  brick.Description,
 		Category:     brick.Category,
+		RequireModel: brick.RequireModel,
 		Status:       "installed", // For now every Arduino brick are installed
 		Variables:    variables,
 		Readme:       readme,

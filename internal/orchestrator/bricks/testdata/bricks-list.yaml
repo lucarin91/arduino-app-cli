@@ -23,3 +23,8 @@ bricks:
   mount_devices_into_container: false
   ports: []
   category: storage
+- id: arduino:brick-with-require-model
+  name: A brick with required model
+  description: "Brick with required model"
+  require_model: true
+  model_name: mobilenet-image-classification

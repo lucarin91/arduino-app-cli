@@ -117,6 +117,7 @@ func StartApp(
 	appToStart app.ArduinoApp,
 	cfg config.Configuration,
 	staticStore *store.StaticStore,
+	idProvider *app.IDProvider,
 ) iter.Seq[StreamMessage] {
 	return func(yield func(StreamMessage) bool) {
 		ctx, cancel := context.WithCancel(ctx)
@@ -183,7 +184,7 @@ func StartApp(
 				return
 			}
 
-			if err := provisioner.App(ctx, bricksIndex, &appToStart, cfg, envs, staticStore); err != nil {
+			if err := provisioner.App(ctx, bricksIndex, &appToStart, cfg, envs, staticStore, idProvider); err != nil {
 				yield(StreamMessage{error: err})
 				return
 			}
@@ -458,6 +459,7 @@ func RestartApp(
 	appToStart app.ArduinoApp,
 	cfg config.Configuration,
 	staticStore *store.StaticStore,
+	idProvider *app.IDProvider,
 ) iter.Seq[StreamMessage] {
 	return func(yield func(StreamMessage) bool) {
 		ctx, cancel := context.WithCancel(ctx)
@@ -484,7 +486,7 @@ func RestartApp(
 				}
 			}
 		}
-		startStream := StartApp(ctx, docker, provisioner, modelsIndex, bricksIndex, appToStart, cfg, staticStore)
+		startStream := StartApp(ctx, docker, provisioner, modelsIndex, bricksIndex, appToStart, cfg, staticStore, idProvider)
 		startStream(yield)
 	}
 }
@@ -517,7 +519,7 @@ func StartDefaultApp(
 	}
 
 	// TODO: we need to stop all other running app before starting the default app.
-	for msg := range StartApp(ctx, docker, provisioner, modelsIndex, bricksIndex, *app, cfg, staticStore) {
+	for msg := range StartApp(ctx, docker, provisioner, modelsIndex, bricksIndex, *app, cfg, staticStore, idProvider) {
 		if msg.IsError() {
 			return fmt.Errorf("failed to start app: %w", msg.GetError())
 		}

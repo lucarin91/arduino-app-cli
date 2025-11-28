@@ -13,22 +13,52 @@
 // Arduino software without disclosing the source code of your own applications.
 // To purchase a commercial license, send an email to license@arduino.cc.
 
-package app
+package monitor
 
 import (
+	"io"
+	"os"
+
 	"github.com/spf13/cobra"
 
-	"github.com/arduino/arduino-app-cli/cmd/arduino-app-cli/completion"
-	"github.com/arduino/arduino-app-cli/internal/orchestrator/config"
+	"github.com/arduino/arduino-app-cli/internal/monitor"
 )
 
-func newMonitorCmd(cfg config.Configuration) *cobra.Command {
+func NewMonitorCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "monitor",
 		Short: "Monitor the Arduino app",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			panic("not implemented")
+			start, err := monitor.NewMonitorHandler(&stdInOutProxy{stdin: os.Stdin, stdout: os.Stdout}) // nolint:forbidigo
+			if err != nil {
+				return err
+			}
+			go start()
+			<-cmd.Context().Done()
+			return nil
 		},
-		ValidArgsFunction: completion.ApplicationNames(cfg),
 	}
+}
+
+type stdInOutProxy struct {
+	stdin  io.Reader
+	stdout io.Writer
+}
+
+func (s stdInOutProxy) ReadMessage() (int, []byte, error) {
+	var p [1024]byte
+	n, err := s.stdin.Read(p[:])
+	if err != nil {
+		return 0, nil, err
+	}
+	return 1, p[:n], nil
+}
+
+func (s stdInOutProxy) WriteMessage(messageType int, data []byte) error {
+	_, err := s.stdout.Write(data)
+	return err
+}
+
+func (s stdInOutProxy) Close() error {
+	return nil
 }

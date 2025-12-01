@@ -36,7 +36,7 @@ func NewMonitorHandler(ws MessageReaderWriter) (func(), error) {
 	// Connect to monitor
 	mon, err := net.DialTimeout("tcp", "127.0.0.1:7500", time.Second)
 	if err != nil {
-		return func() {}, err
+		return nil, err
 	}
 
 	return func() {

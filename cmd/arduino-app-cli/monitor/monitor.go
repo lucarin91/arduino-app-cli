@@ -21,6 +21,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/arduino/arduino-app-cli/cmd/feedback"
 	"github.com/arduino/arduino-app-cli/internal/monitor"
 )
 
@@ -29,7 +30,11 @@ func NewMonitorCmd() *cobra.Command {
 		Use:   "monitor",
 		Short: "Attach to the microcontroller serial monitor",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			start, err := monitor.NewMonitorHandler(&stdInOutProxy{stdin: os.Stdin, stdout: os.Stdout}) // nolint:forbidigo
+			stdout, _, err := feedback.DirectStreams()
+			if err != nil {
+				return err
+			}
+			start, err := monitor.NewMonitorHandler(&combinedReadWrite{r: os.Stdin, w: stdout}) // nolint:forbidigo
 			if err != nil {
 				return err
 			}
@@ -40,25 +45,19 @@ func NewMonitorCmd() *cobra.Command {
 	}
 }
 
-type stdInOutProxy struct {
-	stdin  io.Reader
-	stdout io.Writer
+type combinedReadWrite struct {
+	r io.Reader
+	w io.Writer
 }
 
-func (s stdInOutProxy) ReadMessage() (int, []byte, error) {
-	var p [1024]byte
-	n, err := s.stdin.Read(p[:])
-	if err != nil {
-		return 0, nil, err
-	}
-	return 1, p[:n], nil
+func (crw *combinedReadWrite) Read(p []byte) (n int, err error) {
+	return crw.r.Read(p)
 }
 
-func (s stdInOutProxy) WriteMessage(messageType int, data []byte) error {
-	_, err := s.stdout.Write(data)
-	return err
+func (crw *combinedReadWrite) Write(p []byte) (n int, err error) {
+	return crw.w.Write(p)
 }
 
-func (s stdInOutProxy) Close() error {
+func (crw *combinedReadWrite) Close() error {
 	return nil
 }

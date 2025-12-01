@@ -17,44 +17,27 @@ package monitor
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	"time"
-
-	"github.com/gorilla/websocket"
 )
 
-type MessageReaderWriter interface {
-	ReadMessage() (messageType int, p []byte, err error)
-	WriteMessage(messageType int, data []byte) error
-	Close() error
-}
+const monitorAddr = "127.0.0.1:7500"
 
-func NewMonitorHandler(rw MessageReaderWriter) (func(), error) {
+func NewMonitorHandler(rw io.ReadWriteCloser) (func(), error) {
 	// Connect to monitor
-	mon, err := net.DialTimeout("tcp", "127.0.0.1:7500", time.Second)
+	monitor, err := net.DialTimeout("tcp", monitorAddr, time.Second)
 	if err != nil {
 		return nil, err
 	}
 
 	return func() {
-		monitorStream(mon, rw)
+		monitorStream(monitor, rw)
 	}, nil
 }
 
-func monitorStream(mon net.Conn, rw MessageReaderWriter) {
-	logWebsocketError := func(msg string, err error) {
-		// Do not log simple close or interruption errors
-		if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway, websocket.CloseNoStatusReceived, websocket.CloseAbnormalClosure) {
-			if e, ok := err.(*websocket.CloseError); ok {
-				slog.Error(msg, slog.String("closecause", fmt.Sprintf("%d: %s", e.Code, err)))
-			} else {
-				slog.Error(msg, slog.String("error", err.Error()))
-			}
-		}
-	}
+func monitorStream(mon net.Conn, rw io.ReadWriteCloser) {
 	logSocketError := func(msg string, err error) {
 		if !errors.Is(err, net.ErrClosed) && !errors.Is(err, io.EOF) {
 			slog.Error(msg, slog.String("error", err.Error()))
@@ -63,14 +46,15 @@ func monitorStream(mon net.Conn, rw MessageReaderWriter) {
 	go func() {
 		defer mon.Close()
 		defer rw.Close()
+		buff := [1024]byte{}
 		for {
 			// Read from websocket and write to monitor
-			_, msg, err := rw.ReadMessage()
+			n, err := rw.Read(buff[:])
 			if err != nil {
-				logWebsocketError("Error reading from websocket", err)
+				logSocketError("Error reading from websocket", err)
 				return
 			}
-			if _, err := mon.Write(msg); err != nil {
+			if _, err := mon.Write(buff[:n]); err != nil {
 				logSocketError("Error writing to monitor", err)
 				return
 			}
@@ -88,8 +72,8 @@ func monitorStream(mon net.Conn, rw MessageReaderWriter) {
 				return
 			}
 
-			if err := rw.WriteMessage(websocket.BinaryMessage, buff[:n]); err != nil {
-				logWebsocketError("Error writing to websocket", err)
+			if _, err := rw.Write(buff[:n]); err != nil {
+				logSocketError("Error writing to websocket", err)
 				return
 			}
 		}

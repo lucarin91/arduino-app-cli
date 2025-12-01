@@ -21,7 +21,6 @@ import (
 	"net"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/gorilla/websocket"
 
@@ -40,19 +39,10 @@ func HandleMonitorWS(allowedOrigins []string) http.HandlerFunc {
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Connect to monitor
-		mon, err := net.DialTimeout("tcp", "127.0.0.1:7500", time.Second)
-		if err != nil {
-			slog.Error("Unable to connect to monitor", slog.String("error", err.Error()))
-			render.EncodeResponse(w, http.StatusServiceUnavailable, models.ErrorResponse{Details: "Unable to connect to monitor: " + err.Error()})
-			return
-		}
-
 		// Upgrade the connection to websocket
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			// Remember to close monitor connection if websocket upgrade fails.
-			mon.Close()
 
 			slog.Error("Failed to upgrade connection", slog.String("error", err.Error()))
 			render.EncodeResponse(w, http.StatusInternalServerError, map[string]string{"error": "Failed to upgrade connection: " + err.Error()})
@@ -60,7 +50,7 @@ func HandleMonitorWS(allowedOrigins []string) http.HandlerFunc {
 		}
 
 		// Now the connection is managed by the websocket library, let's move the handlers in the goroutine
-		start, err := monitor.NewMonitorHandler(conn)
+		start, err := monitor.NewMonitorHandler(&wsReadWriteCloser{conn: conn})
 		if err != nil {
 			slog.Error("Unable to start monitor handler", slog.String("error", err.Error()))
 			render.EncodeResponse(w, http.StatusInternalServerError, models.ErrorResponse{Details: "Unable to start monitor handler: " + err.Error()})
@@ -113,4 +103,51 @@ func checkOrigin(origin string, allowedOrigins []string) bool {
 	}
 	slog.Error("WebSocket origin check failed", slog.String("origin", origin))
 	return false
+}
+
+type wsReadWriteCloser struct {
+	conn *websocket.Conn
+
+	buff []byte
+}
+
+func (w *wsReadWriteCloser) Read(p []byte) (n int, err error) {
+	if len(w.buff) > 0 {
+		n = copy(p, w.buff)
+		w.buff = w.buff[n:]
+		return n, nil
+	}
+
+	ty, message, err := w.conn.ReadMessage()
+	if err != nil {
+		return 0, mapWebSocketErrors(err)
+	}
+	if ty != websocket.BinaryMessage {
+		return 0, fmt.Errorf("unexpected websocket message type: %d", ty)
+	}
+	w.buff = message
+
+	n = copy(p, w.buff)
+	w.buff = w.buff[n:]
+	return n, nil
+}
+
+func (w *wsReadWriteCloser) Write(p []byte) (n int, err error) {
+	err = w.conn.WriteMessage(websocket.BinaryMessage, p)
+	if err != nil {
+		return 0, mapWebSocketErrors(err)
+	}
+	return len(p), nil
+}
+
+func (w *wsReadWriteCloser) Close() error {
+	w.buff = nil
+	return w.conn.Close()
+}
+
+func mapWebSocketErrors(err error) error {
+	if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway, websocket.CloseNoStatusReceived, websocket.CloseAbnormalClosure) {
+		return net.ErrClosed
+	}
+	return err
 }

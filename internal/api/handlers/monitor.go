@@ -122,13 +122,11 @@ func (w *wsReadWriteCloser) Read(p []byte) (n int, err error) {
 	if err != nil {
 		return 0, mapWebSocketErrors(err)
 	}
-	if ty != websocket.BinaryMessage {
-		return 0, fmt.Errorf("unexpected websocket message type: %d", ty)
+	if ty != websocket.BinaryMessage && ty != websocket.TextMessage {
+		return
 	}
-	w.buff = message
-
-	n = copy(p, w.buff)
-	w.buff = w.buff[n:]
+	n = copy(p, message)
+	w.buff = message[n:]
 	return n, nil
 }
 

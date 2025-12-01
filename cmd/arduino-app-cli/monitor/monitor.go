@@ -27,7 +27,7 @@ import (
 func NewMonitorCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "monitor",
-		Short: "Monitor the Arduino app",
+		Short: "Attach to the microcontroller serial monitor",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			start, err := monitor.NewMonitorHandler(&stdInOutProxy{stdin: os.Stdin, stdout: os.Stdout}) // nolint:forbidigo
 			if err != nil {

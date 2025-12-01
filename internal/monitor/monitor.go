@@ -32,7 +32,7 @@ type MessageReaderWriter interface {
 	Close() error
 }
 
-func NewMonitorHandler(ws MessageReaderWriter) (func(), error) {
+func NewMonitorHandler(rw MessageReaderWriter) (func(), error) {
 	// Connect to monitor
 	mon, err := net.DialTimeout("tcp", "127.0.0.1:7500", time.Second)
 	if err != nil {
@@ -40,11 +40,11 @@ func NewMonitorHandler(ws MessageReaderWriter) (func(), error) {
 	}
 
 	return func() {
-		monitorStream(mon, ws)
+		monitorStream(mon, rw)
 	}, nil
 }
 
-func monitorStream(mon net.Conn, ws MessageReaderWriter) {
+func monitorStream(mon net.Conn, rw MessageReaderWriter) {
 	logWebsocketError := func(msg string, err error) {
 		// Do not log simple close or interruption errors
 		if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway, websocket.CloseNoStatusReceived, websocket.CloseAbnormalClosure) {
@@ -62,10 +62,10 @@ func monitorStream(mon net.Conn, ws MessageReaderWriter) {
 	}
 	go func() {
 		defer mon.Close()
-		defer ws.Close()
+		defer rw.Close()
 		for {
 			// Read from websocket and write to monitor
-			_, msg, err := ws.ReadMessage()
+			_, msg, err := rw.ReadMessage()
 			if err != nil {
 				logWebsocketError("Error reading from websocket", err)
 				return
@@ -78,7 +78,7 @@ func monitorStream(mon net.Conn, ws MessageReaderWriter) {
 	}()
 	go func() {
 		defer mon.Close()
-		defer ws.Close()
+		defer rw.Close()
 		buff := [1024]byte{}
 		for {
 			// Read from monitor and write to websocket
@@ -88,7 +88,7 @@ func monitorStream(mon net.Conn, ws MessageReaderWriter) {
 				return
 			}
 
-			if err := ws.WriteMessage(websocket.BinaryMessage, buff[:n]); err != nil {
+			if err := rw.WriteMessage(websocket.BinaryMessage, buff[:n]); err != nil {
 				logWebsocketError("Error writing to websocket", err)
 				return
 			}

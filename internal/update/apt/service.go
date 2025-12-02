@@ -18,6 +18,7 @@ package apt
 import (
 	"bufio"
 	"context"
+	_ "embed"
 	"fmt"
 	"io"
 	"iter"
@@ -175,16 +176,16 @@ func runUpdateCommand(ctx context.Context) error {
 	return nil
 }
 
-func getAptUpdateConfigFile() (*paths.Path, func(), error) {
-	// Configure apt return error on any warning during update.
-	configContent := []byte(`APT::Update::Error-Mode "any";`)
+//go:embed apt_update.config
+var aptUpdateConfig []byte
 
+func getAptUpdateConfigFile() (*paths.Path, func(), error) {
 	config, err := paths.MkTempFile(nil, "apt.config")
 	if err != nil {
 		return nil, nil, fmt.Errorf("cannot create apt config file: %w", err)
 	}
 
-	if _, err = config.Write(configContent); err != nil {
+	if _, err = config.Write(aptUpdateConfig); err != nil {
 		return nil, nil, fmt.Errorf("cannot write temporary apt config file: %w", err)
 	}
 

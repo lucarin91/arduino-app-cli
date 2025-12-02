@@ -65,7 +65,7 @@ func monitorStream(mon net.Conn, rw io.ReadWriteCloser) {
 		defer rw.Close()
 		buff := [1024]byte{}
 		for {
-			// Read from monitor and write to websocket
+			// Read from monitor and write to writer
 			n, err := mon.Read(buff[:])
 			if err != nil {
 				logSocketError("Error reading from monitor", err)

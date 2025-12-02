@@ -73,7 +73,7 @@ func monitorStream(mon net.Conn, rw io.ReadWriteCloser) {
 			}
 
 			if _, err := rw.Write(buff[:n]); err != nil {
-				logSocketError("Error writing to websocket", err)
+				logSocketError("Error writing to buffer", err)
 				return
 			}
 		}

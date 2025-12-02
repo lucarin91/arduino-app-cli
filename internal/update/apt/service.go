@@ -18,7 +18,6 @@ package apt
 import (
 	"bufio"
 	"context"
-	_ "embed"
 	"fmt"
 	"io"
 	"iter"

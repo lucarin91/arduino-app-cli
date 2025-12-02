@@ -154,19 +154,7 @@ func runDpkgConfigureCommand(ctx context.Context) error {
 }
 
 func runUpdateCommand(ctx context.Context) error {
-	// Create a temporary apt config file for passing custom option,
-	// without changing the sudoers file.
-	config, rmConfig, err := getAptUpdateConfigFile()
-	if err != nil {
-		slog.Warn("cannot write apt config file, skipped", slog.String("error", err.Error()))
-		return err
-	}
-	defer rmConfig()
-
-	cmd, err := paths.NewProcess(
-		[]string{"APT_CONFIG", config.String()},
-		"sudo", "apt-get", "update",
-	)
+	cmd, err := paths.NewProcess(nil, "sudo", "apt-get", "update")
 	if err != nil {
 		return err
 	}
@@ -174,27 +162,6 @@ func runUpdateCommand(ctx context.Context) error {
 		return fmt.Errorf("error running apt-get update command: %w: %s", err, out)
 	}
 	return nil
-}
-
-//go:embed apt_update.config
-var aptUpdateConfig []byte
-
-func getAptUpdateConfigFile() (*paths.Path, func(), error) {
-	config, err := paths.MkTempFile(nil, "apt.config")
-	if err != nil {
-		return nil, nil, fmt.Errorf("cannot create apt config file: %w", err)
-	}
-
-	if _, err = config.Write(aptUpdateConfig); err != nil {
-		return nil, nil, fmt.Errorf("cannot write temporary apt config file: %w", err)
-	}
-
-	path, err := paths.New(config.Name()).Abs()
-	if err != nil {
-		return nil, nil, fmt.Errorf("cannot get absolute apt config file path: %w", err)
-	}
-
-	return path, func() { _ = path.Remove() }, nil
 }
 
 func runUpgradeCommand(ctx context.Context, names []string) iter.Seq2[string, error] {

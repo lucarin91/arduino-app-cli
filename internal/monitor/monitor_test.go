@@ -6,30 +6,17 @@ import (
 	"net"
 	"testing"
 
-	"github.com/arduino/arduino-app-cli/pkg/x/ports"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/arduino/arduino-app-cli/pkg/x/ports"
 )
 
 func TestMonitorHandler(t *testing.T) {
 	addr := startEcoMonitor(t)
 
-	t.Logf("Started echo monitor at %s", addr.String())
+	rIn, wIn, rwOut := getReadWriteCloser()
 
-	// Use pipes to simulate ReadWriteCloser
-	rOut, wIn := io.Pipe()
-	rIn, wOut := io.Pipe()
-	type pipeReadWriteCloser struct {
-		io.Reader
-		io.Writer
-		io.Closer
-	}
-	pr := &pipeReadWriteCloser{
-		Reader: rOut,
-		Writer: wOut,
-		Closer: io.NopCloser(nil),
-	}
-
-	handler, err := NewMonitorHandler(pr, addr.String())
+	handler, err := NewMonitorHandler(rwOut, addr.String())
 	assert.NoError(t, err)
 	go handler()
 
@@ -47,6 +34,23 @@ func TestMonitorHandler(t *testing.T) {
 	assert.Equal(t, message, string(buf[:n]))
 }
 
+func getReadWriteCloser() (io.Reader, io.Writer, io.ReadWriteCloser) {
+	rOut, wIn := io.Pipe()
+	rIn, wOut := io.Pipe()
+
+	type pipeReadWriteCloser struct {
+		io.Reader
+		io.Writer
+		io.Closer
+	}
+	pr := &pipeReadWriteCloser{
+		Reader: rOut,
+		Writer: wOut,
+		Closer: io.NopCloser(nil),
+	}
+	return rIn, wIn, pr
+}
+
 func startEcoMonitor(t *testing.T) net.Addr {
 	t.Helper()
 
@@ -61,7 +65,11 @@ func startEcoMonitor(t *testing.T) net.Addr {
 		for {
 			conn, err := ln.Accept()
 			assert.NoError(t, err)
-			go io.Copy(conn, conn) // Echo server
+			go func() {
+				defer conn.Close()
+				_, err = io.Copy(conn, conn) // Echo server
+				assert.NoError(t, err)
+			}()
 		}
 	}()
 

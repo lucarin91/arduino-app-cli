@@ -67,8 +67,7 @@ func startEcoMonitor(t *testing.T) net.Addr {
 			assert.NoError(t, err)
 			go func() {
 				defer conn.Close()
-				_, err = io.Copy(conn, conn) // Echo server
-				assert.NoError(t, err)
+				_, _ = io.Copy(conn, conn) // Echo server
 			}()
 		}
 	}()

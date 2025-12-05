@@ -21,13 +21,22 @@ import (
 	"log/slog"
 	"net"
 	"time"
+
+	"go.bug.st/f"
 )
 
-const monitorAddr = "127.0.0.1:7500"
+const defaultArduinoRouterMonitorAddress = "127.0.0.1:7500"
 
-func NewMonitorHandler(rw io.ReadWriteCloser) (func(), error) {
+func NewMonitorHandler(rw io.ReadWriteCloser, address ...string) (func(), error) {
+	f.Assert(len(address) <= 1, "NewMonitorHandler accepts at most one address argument")
+
+	addr := defaultArduinoRouterMonitorAddress
+	if len(address) == 1 {
+		addr = address[0]
+	}
+
 	// Connect to monitor
-	monitor, err := net.DialTimeout("tcp", monitorAddr, time.Second)
+	monitor, err := net.DialTimeout("tcp", addr, time.Second)
 	if err != nil {
 		return nil, err
 	}

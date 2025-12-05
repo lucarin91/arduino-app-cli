@@ -10,7 +10,16 @@ RUN useradd -m --create-home --shell /bin/bash --user-group --groups sudo arduin
     mkdir /home/arduino/ArduinoApps && \
     chown -R arduino:arduino /home/arduino/ArduinoApps
 
-ADD scripts/pong-server.sh /usr/local/bin/pong-server.sh
+RUN cat > /usr/local/bin/pong-server.sh <<'EOF'
+#!/bin/sh
+
+PORT=9999
+
+while true; do
+  echo -n "pong" | nc -l -p $PORT
+done
+EOF
+RUN chmod +x /usr/local/bin/pong-server.sh
 
 WORKDIR /home/arduino
 EXPOSE 22

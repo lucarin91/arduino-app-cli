@@ -13,22 +13,51 @@
 // Arduino software without disclosing the source code of your own applications.
 // To purchase a commercial license, send an email to license@arduino.cc.
 
-package app
+package monitor
 
 import (
+	"io"
+	"os"
+
 	"github.com/spf13/cobra"
 
-	"github.com/arduino/arduino-app-cli/cmd/arduino-app-cli/completion"
-	"github.com/arduino/arduino-app-cli/internal/orchestrator/config"
+	"github.com/arduino/arduino-app-cli/cmd/feedback"
+	"github.com/arduino/arduino-app-cli/internal/monitor"
 )
 
-func newMonitorCmd(cfg config.Configuration) *cobra.Command {
+func NewMonitorCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "monitor",
-		Short: "Monitor the Arduino app",
+		Short: "Attach to the microcontroller serial monitor",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			panic("not implemented")
+			stdout, _, err := feedback.DirectStreams()
+			if err != nil {
+				return err
+			}
+			start, err := monitor.NewMonitorHandler(&combinedReadWrite{r: os.Stdin, w: stdout}) // nolint:forbidigo
+			if err != nil {
+				return err
+			}
+			go start()
+			<-cmd.Context().Done()
+			return nil
 		},
-		ValidArgsFunction: completion.ApplicationNames(cfg),
 	}
+}
+
+type combinedReadWrite struct {
+	r io.Reader
+	w io.Writer
+}
+
+func (crw *combinedReadWrite) Read(p []byte) (n int, err error) {
+	return crw.r.Read(p)
+}
+
+func (crw *combinedReadWrite) Write(p []byte) (n int, err error) {
+	return crw.w.Write(p)
+}
+
+func (crw *combinedReadWrite) Close() error {
+	return nil
 }

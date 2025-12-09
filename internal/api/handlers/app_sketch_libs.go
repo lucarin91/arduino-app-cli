@@ -122,7 +122,7 @@ func HandleSketchListLibraries(idProvider *app.IDProvider) http.HandlerFunc {
 
 		libraries, err := orchestrator.ListSketchLibraries(r.Context(), app)
 		if err != nil {
-			render.EncodeResponse(w, http.StatusInternalServerError, models.ErrorResponse{Details: "unable to clone app"})
+			render.EncodeResponse(w, http.StatusInternalServerError, models.ErrorResponse{Details: "unable to list sketch libraries: " + err.Error()})
 			return
 		}
 		render.EncodeResponse(w, http.StatusOK, SketchListLibraryResponse{

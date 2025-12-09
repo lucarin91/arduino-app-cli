@@ -43,3 +43,17 @@ func ValidateBricks(a AppDescriptor, index *bricksindex.BricksIndex) error {
 	}
 	return allErrors
 }
+
+func Validate(app ArduinoApp, index *bricksindex.BricksIndex) error {
+	var allErrors error
+
+	if app.MainPythonFile == nil || !app.MainPythonFile.Exist() {
+		allErrors = errors.Join(allErrors, fmt.Errorf("main python file is missing"))
+	}
+
+	if err := ValidateBricks(app.Descriptor, index); err != nil {
+		allErrors = errors.Join(allErrors, err)
+	}
+
+	return allErrors
+}

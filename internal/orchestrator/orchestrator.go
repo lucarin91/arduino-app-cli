@@ -122,7 +122,7 @@ func StartApp(
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
 
-		err := app.ValidateBricks(appToStart.Descriptor, bricksIndex)
+		err := app.Validate(appToStart, bricksIndex)
 		if err != nil {
 			yield(StreamMessage{error: err})
 			return
@@ -145,108 +145,96 @@ func StartApp(
 			slog.Debug("unable to set status leds", slog.String("error", err.Error()))
 		}
 
-		sketchCallbackWriter := NewCallbackWriter(func(line string) {
-			if !yield(StreamMessage{data: line}) {
-				cancel()
-				return
-			}
-		})
-		if !yield(StreamMessage{progress: &Progress{Name: "preparing", Progress: 0.0}}) {
+		envs := getAppEnvironmentVariables(appToStart, bricksIndex, modelsIndex)
+		if !yield(StreamMessage{data: "app provisioning"}) {
+			return
+		}
+
+		if !yield(StreamMessage{progress: &Progress{Name: "provisioning", Progress: 0.0}}) {
+			return
+		}
+
+		if err := provisioner.App(ctx, bricksIndex, &appToStart, cfg, envs, staticStore); err != nil {
+			yield(StreamMessage{error: err})
 			return
 		}
 
 		if _, ok := appToStart.GetSketchPath(); ok {
-			if !yield(StreamMessage{progress: &Progress{Name: "sketch compiling and uploading", Progress: 0.0}}) {
+			if !yield(StreamMessage{progress: &Progress{Name: "sketch compiling and uploading", Progress: 10.0}}) {
 				return
 			}
-			if err := compileUploadSketch(ctx, &appToStart, sketchCallbackWriter); err != nil {
-				yield(StreamMessage{error: err})
-				return
-			}
-			if !yield(StreamMessage{progress: &Progress{Name: "sketch updated", Progress: 10.0}}) {
-				return
-			}
-		}
-
-		if appToStart.MainPythonFile != nil {
-			envs := getAppEnvironmentVariables(appToStart, bricksIndex, modelsIndex)
-
-			if !yield(StreamMessage{data: "python provisioning"}) {
-				cancel()
-				return
-			}
-			provisionStartProgress := float32(0.0)
-			if _, ok := appToStart.GetSketchPath(); ok {
-				provisionStartProgress = 10.0
-			}
-
-			if !yield(StreamMessage{progress: &Progress{Name: "python provisioning", Progress: provisionStartProgress}}) {
-				return
-			}
-
-			if err := provisioner.App(ctx, bricksIndex, &appToStart, cfg, envs, staticStore); err != nil {
-				yield(StreamMessage{error: err})
-				return
-			}
-
-			if !yield(StreamMessage{data: "python downloading"}) {
-				cancel()
-				return
-			}
-
-			// Launch the docker compose command to start the app
-			overrideComposeFile := appToStart.AppComposeOverrideFilePath()
-
-			commands := []string{}
-			commands = append(commands, "docker", "compose", "-f", appToStart.AppComposeFilePath().String())
-			if ok, _ := overrideComposeFile.ExistCheck(); ok {
-				commands = append(commands, "-f", overrideComposeFile.String())
-			}
-			commands = append(commands, "up", "-d", "--remove-orphans", "--pull", "missing")
-
-			dockerParser := NewDockerProgressParser(200)
-
-			var customError error
-			callbackDockerWriter := NewCallbackWriter(func(line string) {
-				// docker compose sometimes returns errors as info lines, we try to parse them here and return a proper error
-
-				if e := GetCustomErrorFomDockerEvent(line); e != nil {
-					customError = e
-				}
-				if percentage, ok := dockerParser.Parse(line); ok {
-
-					// assumption: docker pull progress goes from 0 to 80% of the total app start progress
-					totalProgress := 20.0 + (percentage/100.0)*80.0
-
-					if !yield(StreamMessage{progress: &Progress{Name: "python starting", Progress: float32(totalProgress)}}) {
-						cancel()
-						return
-					}
-					return
-				} else if !yield(StreamMessage{data: line}) {
+			sketchCallbackWriter := NewCallbackWriter(func(line string) {
+				if !yield(StreamMessage{data: line}) {
 					cancel()
 					return
 				}
 			})
-
-			slog.Debug("starting app", slog.String("command", strings.Join(commands, " ")), slog.Any("envs", envs))
-			process, err := paths.NewProcess(envs.AsList(), commands...)
-			if err != nil {
+			if err := compileUploadSketch(ctx, &appToStart, sketchCallbackWriter); err != nil {
 				yield(StreamMessage{error: err})
 				return
 			}
-			process.RedirectStderrTo(callbackDockerWriter)
-			process.RedirectStdoutTo(callbackDockerWriter)
-			if err := process.RunWithinContext(ctx); err != nil {
-				// custom error could have been set while reading the output. Not detected by the process exit code
-				if customError != nil {
-					err = customError
-				}
-
-				yield(StreamMessage{error: err})
+			if !yield(StreamMessage{progress: &Progress{Name: "sketch updated", Progress: 20.0}}) {
 				return
 			}
 		}
+
+		if !yield(StreamMessage{data: "python downloading"}) {
+			return
+		}
+
+		// Launch the docker compose command to start the app
+		overrideComposeFile := appToStart.AppComposeOverrideFilePath()
+
+		commands := []string{}
+		commands = append(commands, "docker", "compose", "-f", appToStart.AppComposeFilePath().String())
+		if ok, _ := overrideComposeFile.ExistCheck(); ok {
+			commands = append(commands, "-f", overrideComposeFile.String())
+		}
+		commands = append(commands, "up", "-d", "--remove-orphans", "--pull", "missing")
+
+		dockerParser := NewDockerProgressParser(200)
+
+		var customError error
+		callbackDockerWriter := NewCallbackWriter(func(line string) {
+			// docker compose sometimes returns errors as info lines, we try to parse them here and return a proper error
+
+			if e := GetCustomErrorFomDockerEvent(line); e != nil {
+				customError = e
+			}
+			if percentage, ok := dockerParser.Parse(line); ok {
+
+				// assumption: docker pull progress goes from 0 to 80% of the total app start progress
+				totalProgress := 20.0 + (percentage/100.0)*80.0
+
+				if !yield(StreamMessage{progress: &Progress{Name: "python starting", Progress: float32(totalProgress)}}) {
+					cancel()
+					return
+				}
+				return
+			} else if !yield(StreamMessage{data: line}) {
+				cancel()
+				return
+			}
+		})
+
+		slog.Debug("starting app", slog.String("command", strings.Join(commands, " ")), slog.Any("envs", envs))
+		process, err := paths.NewProcess(envs.AsList(), commands...)
+		if err != nil {
+			yield(StreamMessage{error: err})
+			return
+		}
+		process.RedirectStderrTo(callbackDockerWriter)
+		process.RedirectStdoutTo(callbackDockerWriter)
+		if err := process.RunWithinContext(ctx); err != nil {
+			// custom error could have been set while reading the output. Not detected by the process exit code
+			if customError != nil {
+				err = customError
+			}
+
+			yield(StreamMessage{error: err})
+			return
+		}
+
 		_ = yield(StreamMessage{progress: &Progress{Name: "", Progress: 100.0}})
 	}
 }
@@ -1138,7 +1126,7 @@ func compileUploadSketch(
 	arduinoApp *app.ArduinoApp,
 	w io.Writer,
 ) error {
-	logrus.SetLevel(logrus.ErrorLevel) // Reduce the log level of arduino-cli
+	logrus.SetLevel(logrus.FatalLevel) // Reduce the log level of arduino-cli
 	srv := commands.NewArduinoCoreServer()
 
 	var inst *rpc.Instance

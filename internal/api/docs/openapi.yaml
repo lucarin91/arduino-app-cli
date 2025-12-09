@@ -296,6 +296,14 @@ paths:
         from the sketch project file.
       operationId: appSketchRemoveLibrary
       parameters:
+      - description: if set to "true", the library's dependencies will be removed
+          as well if not needed anymore.
+        in: query
+        name: remove_deps
+        schema:
+          description: if set to "true", the library's dependencies will be removed
+            as well if not needed anymore.
+          type: string
       - description: application identifier.
         in: path
         name: appID

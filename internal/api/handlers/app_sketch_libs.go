@@ -90,12 +90,14 @@ func HandleSketchRemoveLibrary(idProvider *app.IDProvider) http.HandlerFunc {
 			return
 		}
 
-		if removedLib, err := orchestrator.RemoveSketchLibrary(r.Context(), app, libRef); err != nil {
-			render.EncodeResponse(w, http.StatusInternalServerError, models.ErrorResponse{Details: "unable to remove sketch library"})
+		// Get query param addDeps (default false)
+		removeDeps, _ := strconv.ParseBool(r.URL.Query().Get("remove_deps"))
+		if removedLibs, err := orchestrator.RemoveSketchLibrary(r.Context(), app, libRef, removeDeps); err != nil {
+			render.EncodeResponse(w, http.StatusInternalServerError, models.ErrorResponse{Details: "unable to remove sketch library: " + err.Error()})
 			return
 		} else {
 			render.EncodeResponse(w, http.StatusOK, SketchRemoveLibraryResponse{
-				RemovedLibraries: []orchestrator.LibraryReleaseID{removedLib},
+				RemovedLibraries: removedLibs,
 			})
 			return
 		}

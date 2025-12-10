@@ -82,10 +82,14 @@ func identifyUnoQ(p *rpc.DetectedPort) {
 }
 
 var onBoard = sync.OnceValue(func() bool {
-	var boardNames = []string{"Imola\n", "Inc. Robotics RB1\n"}
-	buf, err := os.ReadFile("/sys/class/dmi/id/product_name")
-	if err == nil && slices.Contains(boardNames, string(buf)) {
-		return true
+	var boardNames = []string{
+		"Imola", // code name for UNO Q
+	}
+	if buf, err := os.ReadFile("/sys/class/dmi/id/product_name"); err == nil {
+		name := string(bytes.TrimSpace(buf))
+		if slices.Contains(boardNames, name) {
+			return true
+		}
 	}
 	return false
 })()

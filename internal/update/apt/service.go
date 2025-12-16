@@ -83,6 +83,17 @@ func (s *Service) UpgradePackages(ctx context.Context, names []string) (<-chan u
 		defer s.lock.Unlock()
 		defer close(eventsCh)
 
+		// We try anyway to restart the service.
+		defer func() {
+			eventsCh <- update.NewDataEvent(update.RestartEvent, "Upgrade completed. Restarting ...")
+
+			err := restartServices(ctx)
+			if err != nil {
+				eventsCh <- update.NewErrorEvent(fmt.Errorf("error restarting services after upgrade: %w", err))
+				return
+			}
+		}()
+
 		eventsCh <- update.NewDataEvent(update.StartEvent, "Upgrade is starting")
 		stream := runUpgradeCommand(ctx, names)
 		for line, err := range stream {
@@ -126,13 +137,6 @@ func (s *Service) UpgradePackages(ctx context.Context, names []string) (<-chan u
 				return
 			}
 			eventsCh <- update.NewDataEvent(update.UpgradeLineEvent, line)
-		}
-		eventsCh <- update.NewDataEvent(update.RestartEvent, "Upgrade completed. Restarting ...")
-
-		err := restartServices(ctx)
-		if err != nil {
-			eventsCh <- update.NewErrorEvent(fmt.Errorf("error restarting services after upgrade: %w", err))
-			return
 		}
 	}()
 

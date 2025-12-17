@@ -16,6 +16,7 @@
 package bricks
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -71,7 +72,7 @@ func (s *Service) List() (BrickListResult, error) {
 }
 
 func (s *Service) AppBrickInstancesList(a *app.ArduinoApp) (AppBrickInstancesResult, error) {
-	res := AppBrickInstancesResult{BrickInstances: make([]BrickInstanceListItem, len(a.Descriptor.Bricks))}
+	res := AppBrickInstancesResult{BrickInstances: make([]BrickInstance, len(a.Descriptor.Bricks))}
 	for i, brickInstance := range a.Descriptor.Bricks {
 		brick, found := s.bricksIndex.FindBrickByID(brickInstance.ID)
 		if !found {
@@ -80,16 +81,23 @@ func (s *Service) AppBrickInstancesList(a *app.ArduinoApp) (AppBrickInstancesRes
 
 		variablesMap, configVariables := getInstanceBrickConfigVariableDetails(brick, brickInstance.Variables)
 
-		res.BrickInstances[i] = BrickInstanceListItem{
+		res.BrickInstances[i] = BrickInstance{
 			ID:              brick.ID,
 			Name:            brick.Name,
 			Author:          "Arduino", // TODO: for now we only support our bricks
 			Category:        brick.Category,
 			Status:          "installed",
 			RequireModel:    brick.RequireModel,
-			ModelID:         brickInstance.Model, // TODO: in case is not set by the user, should we return the default model?
-			Variables:       variablesMap,        // TODO: do we want to show also the default value of not explicitly set variables?
+			ModelID:         cmp.Or(brickInstance.Model, brick.ModelName),
+			Variables:       variablesMap,
 			ConfigVariables: configVariables,
+			CompatibleModels: f.Map(s.modelsIndex.GetModelsByBrick(brick.ID), func(m modelsindex.AIModel) AIModel {
+				return AIModel{
+					ID:          m.ID,
+					Name:        m.Name,
+					Description: m.ModuleDescription,
+				}
+			}),
 		}
 
 	}
@@ -109,11 +117,6 @@ func (s *Service) AppBrickInstanceDetails(a *app.ArduinoApp, brickID string) (Br
 
 	variables, configVariables := getInstanceBrickConfigVariableDetails(brick, a.Descriptor.Bricks[brickIndex].Variables)
 
-	modelID := a.Descriptor.Bricks[brickIndex].Model
-	if modelID == "" {
-		modelID = brick.ModelName
-	}
-
 	return BrickInstance{
 		ID:              brickID,
 		Name:            brick.Name,
@@ -123,7 +126,7 @@ func (s *Service) AppBrickInstanceDetails(a *app.ArduinoApp, brickID string) (Br
 		RequireModel:    brick.RequireModel,
 		Variables:       variables,
 		ConfigVariables: configVariables,
-		ModelID:         modelID,
+		ModelID:         cmp.Or(a.Descriptor.Bricks[brickIndex].Model, brick.ModelName),
 		CompatibleModels: f.Map(s.modelsIndex.GetModelsByBrick(brick.ID), func(m modelsindex.AIModel) AIModel {
 			return AIModel{
 				ID:          m.ID,

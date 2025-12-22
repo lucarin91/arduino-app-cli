@@ -42,6 +42,7 @@ type BrickVariable struct {
 	Name         string `yaml:"name"`
 	DefaultValue string `yaml:"default_value"`
 	Description  string `yaml:"description,omitempty"`
+	Hidden       bool   `yaml:"hidden"`
 }
 
 func (v BrickVariable) IsRequired() bool {
@@ -91,7 +92,7 @@ func unmarshalBricksIndex(content io.Reader) (*BricksIndex, error) {
 	return &index, nil
 }
 
-func GenerateBricksIndexFromFile(dir *paths.Path) (*BricksIndex, error) {
+func Load(dir *paths.Path) (*BricksIndex, error) {
 	content, err := dir.Join("bricks-list.yaml").Open()
 	if err != nil {
 		return nil, err

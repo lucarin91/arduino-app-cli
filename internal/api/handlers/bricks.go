@@ -55,7 +55,7 @@ func HandleAppBrickInstancesList(
 		}
 		appPath := appId.ToPath()
 
-		app, err := app.Load(appPath.String())
+		app, err := app.Load(appPath)
 		if err != nil {
 			slog.Error("Unable to parse the app.yaml", slog.String("error", err.Error()), slog.String("path", appId.String()))
 			render.EncodeResponse(w, http.StatusInternalServerError, models.ErrorResponse{Details: "unable to find the app"})
@@ -85,7 +85,7 @@ func HandleAppBrickInstanceDetails(
 		}
 		appPath := appId.ToPath()
 
-		app, err := app.Load(appPath.String())
+		app, err := app.Load(appPath)
 		if err != nil {
 			slog.Error("Unable to parse the app.yaml", slog.String("error", err.Error()), slog.String("path", appId.String()))
 			render.EncodeResponse(w, http.StatusInternalServerError, models.ErrorResponse{Details: "unable to find the app"})
@@ -120,7 +120,7 @@ func HandleBrickCreate(
 		}
 		appPath := appId.ToPath()
 
-		app, err := app.Load(appPath.String())
+		app, err := app.Load(appPath)
 		if err != nil {
 			slog.Error("Unable to parse the app.yaml", slog.String("error", err.Error()), slog.String("path", appId.String()))
 			render.EncodeResponse(w, http.StatusInternalServerError, models.ErrorResponse{Details: "unable to find the app"})
@@ -146,7 +146,7 @@ func HandleBrickCreate(
 		err = brickService.BrickCreate(req, app)
 		if err != nil {
 			// TODO: handle specific errors
-			slog.Error("Unable to parse the app.yaml", slog.String("error", err.Error()))
+			slog.Error("Unable to create brick", slog.String("error", err.Error()))
 			render.EncodeResponse(w, http.StatusInternalServerError, models.ErrorResponse{Details: "error while creating or updating brick"})
 			return
 		}
@@ -190,7 +190,7 @@ func HandleBrickUpdates(
 		}
 		appPath := appId.ToPath()
 
-		app, err := app.Load(appPath.String())
+		app, err := app.Load(appPath)
 		if err != nil {
 			slog.Error("Unable to parse the app.yaml", slog.String("error", err.Error()), slog.String("path", appId.String()))
 			render.EncodeResponse(w, http.StatusInternalServerError, models.ErrorResponse{Details: "unable to find the app"})
@@ -213,7 +213,7 @@ func HandleBrickUpdates(
 		req.ID = id
 		err = brickService.BrickUpdate(req, app)
 		if err != nil {
-			slog.Error("Unable to parse the app.yaml", slog.String("error", err.Error()))
+			slog.Error("Unable to update the brick", slog.String("error", err.Error()))
 			render.EncodeResponse(w, http.StatusInternalServerError, models.ErrorResponse{Details: "unable to update the brick"})
 
 			return
@@ -236,7 +236,7 @@ func HandleBrickDelete(
 		}
 		appPath := appId.ToPath()
 
-		app, err := app.Load(appPath.String())
+		app, err := app.Load(appPath)
 		if err != nil {
 			slog.Error("Unable to parse the app.yaml", slog.String("error", err.Error()), slog.String("path", appId.String()))
 			render.EncodeResponse(w, http.StatusInternalServerError, models.ErrorResponse{Details: "unable to find the app"})

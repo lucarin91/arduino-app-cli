@@ -609,7 +609,6 @@ Contains a JSON object with the details of an error.
 			Path:        "/v1/apps",
 			Request:     handlers.CreateAppRequest{},
 			Parameters: (*struct {
-				SkipPython bool `query:"skip-python" description:"If true, the app will not be created with the python part."`
 				SkipSketch bool `query:"skip-sketch" description:"If true, the app will not be created with the sketch part."`
 			})(nil),
 			CustomSuccessResponse: &CustomResponseDef{
@@ -1042,8 +1041,9 @@ Contains a JSON object with the details of an error.
 			Method:      http.MethodDelete,
 			Path:        "/v1/apps/{appID}/sketch/libraries/{libRef}",
 			Parameters: (*struct {
-				ID     string `path:"appID" description:"application identifier."`
-				LibRef string `path:"libRef" description:"library reference (\"LibraryName\" or \"LibraryName@Version\")."`
+				ID                 string `path:"appID" description:"application identifier."`
+				LibRef             string `path:"libRef" description:"library reference (\"LibraryName\" or \"LibraryName@Version\")."`
+				RemoveDependencies string `query:"remove_deps" description:"if set to \"true\", the library's dependencies will be removed as well if not needed anymore."`
 			})(nil),
 			CustomSuccessResponse: &CustomResponseDef{
 				ContentType:   "application/json",

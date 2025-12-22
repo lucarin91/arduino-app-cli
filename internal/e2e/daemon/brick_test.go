@@ -72,7 +72,7 @@ func TestBricksList(t *testing.T) {
 	require.NoError(t, err)
 
 	staticStore := store.NewStaticStore(paths.New("testdata", "assets", cfg.RunnerVersion).String())
-	brickIndex, err := bricksindex.GenerateBricksIndexFromFile(staticStore.GetAssetsFolder())
+	brickIndex, err := bricksindex.Load(staticStore.GetAssetsFolder())
 	require.NoError(t, err)
 
 	// Compare the response with the bricks index
@@ -83,6 +83,7 @@ func TestBricksList(t *testing.T) {
 		require.Equal(t, bIdx.Description, *brick.Description)
 		require.Equal(t, "Arduino", *brick.Author)
 		require.Equal(t, "installed", *brick.Status)
+		require.Equal(t, bIdx.RequireModel, *brick.RequireModel)
 	}
 }
 
@@ -115,6 +116,18 @@ func TestBricksDetails(t *testing.T) {
 			},
 		}
 
+		expectedModelLiteInfo := []client.AIModel{
+			{
+				Id:          f.Ptr("mobilenet-image-classification"),
+				Name:        f.Ptr("General purpose image classification"),
+				Description: f.Ptr("General purpose image classification model based on MobileNetV2. This model is trained on the ImageNet dataset and can classify images into 1000 categories."),
+			},
+			{
+				Id:          f.Ptr("person-classification"),
+				Name:        f.Ptr("Person classification"),
+				Description: f.Ptr("Person classification model based on WakeVision dataset. This model is trained to classify images into two categories: person and not-person."),
+			}}
+
 		response, err := httpClient.GetBrickDetailsWithResponse(t.Context(), validBrickID, func(ctx context.Context, req *http.Request) error { return nil })
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, response.StatusCode(), "status code should be 200 ok")
@@ -124,14 +137,14 @@ func TestBricksDetails(t *testing.T) {
 		require.Equal(t, "Image Classification", *response.JSON200.Name)
 		require.NotEmpty(t, *response.JSON200.Description, "description should not be empty")
 		require.Equal(t, "video", *response.JSON200.Category)
-		require.Equal(t, "/home/arduino/.arduino-bricks/ei-models", *(*response.JSON200.Variables)["CUSTOM_MODEL_PATH"].DefaultValue)
-		require.Equal(t, "path to the custom model directory", *(*response.JSON200.Variables)["CUSTOM_MODEL_PATH"].Description)
-		require.Equal(t, false, *(*response.JSON200.Variables)["CUSTOM_MODEL_PATH"].Required)
-		require.Equal(t, "/models/ootb/ei/mobilenet-v2-224px.eim", *(*response.JSON200.Variables)["EI_CLASSIFICATION_MODEL"].DefaultValue)
-		require.Equal(t, "path to the model file", *(*response.JSON200.Variables)["EI_CLASSIFICATION_MODEL"].Description)
-		require.Equal(t, false, *(*response.JSON200.Variables)["EI_CLASSIFICATION_MODEL"].Required)
 		require.NotEmpty(t, *response.JSON200.Readme)
 		require.NotNil(t, response.JSON200.UsedByApps, "UsedByApps should not be nil")
 		require.Equal(t, expectedUsedByApps, *(response.JSON200.UsedByApps))
+		require.NotNil(t, response.JSON200.CompatibleModels, "Models should not be nil")
+		require.Equal(t, expectedModelLiteInfo, *(response.JSON200.CompatibleModels))
+		require.NotNil(t, response.JSON200.ConfigVariables, "ConfigVariables should not be nil")
+		// hidden variables are not returned in the details endpoint
+		require.Nil(t, response.JSON200.Variables)
+		require.Equal(t, []client.BrickConfigVariable{}, *(response.JSON200.ConfigVariables))
 	})
 }

@@ -84,6 +84,19 @@ func (s *Service) UpgradePackages(ctx context.Context, names []string) (iter.Seq
 		if !yield(update.NewDataEvent(update.StartEvent, "Upgrade is starting")) {
 			return
 		}
+
+		// At the end of the upgrade, always try to restart the services (that need it).
+		// This makes sure key services are restarted even if an error happens in the upgrade steps (for examples container images download).
+		defer func() {
+			_ = yield(update.NewDataEvent(update.RestartEvent, "Upgrade completed. Restarting ..."))
+
+			err := restartServices(ctx)
+			if err != nil {
+				_ = yield(update.NewErrorEvent(fmt.Errorf("error restarting services after upgrade: %w", err)))
+				return
+			}
+		}()
+
 		for line, err := range runUpgradeCommand(ctx, names) {
 			if err != nil {
 				_ = yield(update.NewErrorEvent(fmt.Errorf("error running upgrade command: %w", err)))
@@ -136,14 +149,7 @@ func (s *Service) UpgradePackages(ctx context.Context, names []string) (iter.Seq
 				return
 			}
 		}
-		if !yield(update.NewDataEvent(update.RestartEvent, "Upgrade completed. Restarting ...")) {
-			return
-		}
 
-		if err := restartServices(ctx); err != nil {
-			_ = yield(update.NewErrorEvent(fmt.Errorf("error restarting services after upgrade: %w", err)))
-			return
-		}
 	}, nil
 }
 
@@ -295,7 +301,10 @@ func restartServices(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return needRestartCmd.RunWithinContext(ctx)
+	if out, err := needRestartCmd.RunAndCaptureCombinedOutput(ctx); err != nil {
+		return fmt.Errorf("error running needrestart command: %w: %s", err, out)
+	}
+	return nil
 }
 
 func listUpgradablePackages(ctx context.Context, matcher func(update.UpgradablePackage) bool) ([]update.UpgradablePackage, error) {

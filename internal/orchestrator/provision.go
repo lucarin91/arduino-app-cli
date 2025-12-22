@@ -243,37 +243,37 @@ func generateMainComposeFile(
 			ports[fmt.Sprintf("%s:%s", p, p)] = struct{}{}
 		}
 
+		// 2. Collect all the required device classes
+		if len(idxBrick.RequiredDevices) > 0 {
+			for _, deviceClass := range idxBrick.RequiredDevices {
+				requiredDeviceClasses[deviceClass] = true
+			}
+		}
+
 		// The following code is needed only if the brick requires a container.
 		// In case it doesn't we just skip to the next one.
 		if !idxBrick.RequireContainer {
 			continue
 		}
 
-		// 2. Retrieve the brick_compose.yaml file.
+		// 3. Retrieve the brick_compose.yaml file.
 		composeFilePath, err := staticStore.GetBrickComposeFilePathFromID(brick.ID)
 		if err != nil {
 			slog.Error("brick compose id not valid", slog.String("error", err.Error()), slog.String("brick_id", brick.ID))
 			continue
 		}
 
-		// 3. Retrieve the compose services names.
+		// 4. Retrieve the compose services names.
 		svcs, err := extractServicesFromComposeFile(composeFilePath)
 		if err != nil {
 			slog.Error("loading brick_compose", slog.String("brick_id", brick.ID), slog.String("path", composeFilePath.String()), slog.Any("error", err))
 			continue
 		}
 
-		// 4. Retrieve the required devices that we have to mount
+		// 5. Retrieve the required devices that we have to mount
 		slog.Debug("Brick config", slog.Bool("mount_devices_into_container", idxBrick.MountDevicesIntoContainer), slog.Any("ports", ports), slog.Any("required_devices", idxBrick.RequiredDevices))
 		if idxBrick.MountDevicesIntoContainer {
 			servicesThatRequireDevices = slices.AppendSeq(servicesThatRequireDevices, maps.Keys(svcs))
-		}
-
-		// 5. Collect all the required device classes
-		if len(idxBrick.RequiredDevices) > 0 {
-			for _, deviceClass := range idxBrick.RequiredDevices {
-				requiredDeviceClasses[deviceClass] = true
-			}
 		}
 
 		composeFiles.Add(composeFilePath)
@@ -343,6 +343,16 @@ func generateMainComposeFile(
 				Type:   "bind",
 				Source: "/dev/v4l",
 				Target: "/dev/v4l",
+			})
+		}
+	}
+	if devices.hasSoundDevice {
+		// If we are adding sound devices, mount also /dev/snd/by-id if it exists to allow access to by-id links
+		if paths.New("/dev/snd/by-id").Exist() {
+			volumes = append(volumes, volume{
+				Type:   "bind",
+				Source: "/dev/snd/by-id",
+				Target: "/dev/snd/by-id",
 			})
 		}
 	}

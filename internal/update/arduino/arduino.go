@@ -134,7 +134,7 @@ func (a *ArduinoPlatformUpdater) ListUpgradablePackages(ctx context.Context, _ f
 }
 
 // UpgradePackages implements ServiceUpdater.
-func (a *ArduinoPlatformUpdater) UpgradePackages(ctx context.Context, names []string, eventCB func(update.Event)) error {
+func (a *ArduinoPlatformUpdater) UpgradePackages(ctx context.Context, names []string, eventCB update.EventCallback) error {
 	if !a.lock.TryLock() {
 		return update.ErrOperationAlreadyInProgress
 	}

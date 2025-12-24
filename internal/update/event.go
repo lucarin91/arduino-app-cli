@@ -87,3 +87,5 @@ const (
 func (s PackageType) AllowedStatuses() []PackageType {
 	return []PackageType{Arduino, Debian}
 }
+
+type EventCallback func(Event)

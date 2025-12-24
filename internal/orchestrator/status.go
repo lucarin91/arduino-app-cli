@@ -27,11 +27,12 @@ import (
 type Status string
 
 const (
-	StatusStarting Status = "starting"
-	StatusRunning  Status = "running"
-	StatusStopping Status = "stopping"
-	StatusStopped  Status = "stopped"
-	StatusFailed   Status = "failed"
+	StatusStarting      Status = "starting"
+	StatusRunning       Status = "running"
+	StatusStopping      Status = "stopping"
+	StatusStopped       Status = "stopped"
+	StatusFailed        Status = "failed"
+	StatusUninitialized Status = "uninitialized"
 )
 
 func StatusFromDockerState(s container.ContainerState, statusMessage string) Status {
@@ -64,7 +65,7 @@ func ParseStatus(s string) (Status, error) {
 
 func (s Status) Validate() error {
 	switch s {
-	case StatusStarting, StatusRunning, StatusStopping, StatusStopped, StatusFailed:
+	case StatusStarting, StatusRunning, StatusStopping, StatusStopped, StatusFailed, StatusUninitialized:
 		return nil
 	default:
 		return fmt.Errorf("status should be one of %v", s.AllowedStatuses())
@@ -72,7 +73,7 @@ func (s Status) Validate() error {
 }
 
 func (s Status) AllowedStatuses() []Status {
-	return []Status{StatusStarting, StatusRunning, StatusStopping, StatusStopped, StatusFailed}
+	return []Status{StatusStarting, StatusRunning, StatusStopping, StatusStopped, StatusFailed, StatusUninitialized}
 }
 
 func isExitBySignal(statusMessage string) bool {

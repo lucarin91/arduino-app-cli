@@ -73,7 +73,7 @@ func (s *Service) ListUpgradablePackages(ctx context.Context, matcher func(updat
 // UpgradePackages upgrades the specified packages using the `apt-get upgrade` command.
 // It publishes events to subscribers during the upgrade process.
 // It returns an error if the upgrade is already in progress or if the upgrade command fails.
-func (s *Service) UpgradePackages(ctx context.Context, names []string, eventCB func(update.Event)) error {
+func (s *Service) UpgradePackages(ctx context.Context, names []string, eventCB update.EventCallback) error {
 	if !s.lock.TryLock() {
 		return update.ErrOperationAlreadyInProgress
 	}

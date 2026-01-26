@@ -54,6 +54,8 @@ import (
 var (
 	ErrAppAlreadyExists = fmt.Errorf("app already exists")
 	ErrAppDoesntExists  = fmt.Errorf("app doesn't exist")
+	ErrAppNotFound      = fmt.Errorf("app not found")
+	ErrBadRequest       = fmt.Errorf("bad request")
 )
 
 const (
@@ -390,7 +392,15 @@ func stopAppWithCmd(ctx context.Context, docker command.Cli, app app.ArduinoApp,
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
 
-		if !yield(StreamMessage{data: fmt.Sprintf("Stopping app %q", app.Name)}) {
+		var message string
+		switch cmd {
+		case "stop":
+			message = fmt.Sprintf("Stopping app %q", app.Name)
+		case "down":
+			message = fmt.Sprintf("Destroying  app %q", app.Name)
+		}
+
+		if !yield(StreamMessage{data: message}) {
 			return
 		}
 		if err := setStatusLeds(LedTriggerDefault); err != nil {
@@ -406,19 +416,18 @@ func stopAppWithCmd(ctx context.Context, docker command.Cli, app app.ArduinoApp,
 
 		if _, ok := app.GetSketchPath(); ok {
 			// Before stopping the microcontroller we want to make sure that the app was running.
-			appStatus, err := getAppStatus(ctx, docker, app)
+			running, err := getRunningApp(ctx, docker.Client())
 			if err != nil {
 				yield(StreamMessage{error: err})
 				return
 			}
-			if appStatus.Status != StatusStarting && appStatus.Status != StatusRunning {
-				yield(StreamMessage{data: fmt.Sprintf("app %q is not running", app.Name)})
-				return
-			}
-
-			if err := micro.Disable(); err != nil {
-				yield(StreamMessage{error: err})
-				return
+			if running != nil && running.FullPath.String() == app.FullPath.String() {
+				if !yield(StreamMessage{data: "Stopping microcontroller..."}) {
+					return
+				}
+				if err := micro.Disable(); err != nil {
+					_ = yield(StreamMessage{error: err})
+				}
 			}
 		}
 
@@ -426,11 +435,23 @@ func stopAppWithCmd(ctx context.Context, docker command.Cli, app app.ArduinoApp,
 			mainCompose := app.AppComposeFilePath()
 			// In case the app was never started
 			if mainCompose.Exist() {
-				process, err := paths.NewProcess(nil, "docker", "compose", "-f", mainCompose.String(), cmd, fmt.Sprintf("--timeout=%d", DefaultDockerStopTimeoutSeconds))
+				args := []string{
+					"docker",
+					"compose",
+					"-f", mainCompose.String(),
+					cmd,
+					fmt.Sprintf("--timeout=%d", DefaultDockerStopTimeoutSeconds),
+				}
+				if cmd == "down" {
+					args = append(args, "--volumes", "--remove-orphans")
+				}
+
+				process, err := paths.NewProcess(nil, args...)
 				if err != nil {
 					yield(StreamMessage{error: err})
 					return
 				}
+
 				process.RedirectStderrTo(callbackWriter)
 				process.RedirectStdoutTo(callbackWriter)
 				if err := process.RunWithinContext(ctx); err != nil {
@@ -448,7 +469,39 @@ func StopApp(ctx context.Context, dockerClient command.Cli, app app.ArduinoApp) 
 }
 
 func StopAndDestroyApp(ctx context.Context, dockerClient command.Cli, app app.ArduinoApp) iter.Seq[StreamMessage] {
-	return stopAppWithCmd(ctx, dockerClient, app, "down")
+	return func(yield func(StreamMessage) bool) {
+		for msg := range stopAppWithCmd(ctx, dockerClient, app, "down") {
+			if !yield(msg) {
+				return
+			}
+		}
+
+		for msg := range cleanAppCacheFiles(app) {
+			if !yield(msg) {
+				return
+			}
+		}
+	}
+}
+
+func cleanAppCacheFiles(app app.ArduinoApp) iter.Seq[StreamMessage] {
+	return func(yield func(StreamMessage) bool) {
+		cachePath := app.FullPath.Join(".cache")
+
+		if exists, _ := cachePath.ExistCheck(); !exists {
+			yield(StreamMessage{data: "No cache to clean."})
+			return
+		}
+		if !yield(StreamMessage{data: "Removing app cache files..."}) {
+			return
+		}
+		slog.Debug("removing app cache", slog.String("path", cachePath.String()))
+		if err := cachePath.RemoveAll(); err != nil {
+			yield(StreamMessage{error: fmt.Errorf("unable to remove app cache: %w", err)})
+			return
+		}
+		yield(StreamMessage{data: "Cache removed successfully."})
+	}
 }
 
 func RestartApp(
@@ -597,6 +650,9 @@ func ListApps(
 			if file.Base() == ".cache" {
 				return false
 			}
+			if IsTmpApp(file) {
+				return false
+			}
 			if file.Join("app.yaml").NotExist() && file.Join("app.yml").NotExist() {
 				// Let's continue the scan, we might be in an parent folder
 				return true
@@ -616,6 +672,9 @@ func ListApps(
 	}
 
 	for _, file := range appPaths {
+		if IsTmpApp(file) {
+			continue
+		}
 		app, err := app.Load(file)
 		if err != nil {
 			result.BrokenApps = append(result.BrokenApps, BrokenAppInfo{
@@ -630,7 +689,7 @@ func ListApps(
 			continue
 		}
 
-		var status Status
+		status := StatusUninitialized
 		if idx := slices.IndexFunc(apps, func(a AppStatusInfo) bool {
 			return a.AppPath.EqualsTo(app.FullPath)
 		}); idx != -1 {
@@ -660,6 +719,12 @@ func ListApps(
 	}
 
 	return result, nil
+}
+
+// returns true if the app path is a temporary app
+// that should not be listed (neither in the brocken apps)
+func IsTmpApp(p *paths.Path) bool {
+	return strings.HasPrefix(p.Base(), tmpAppPrefix)
 }
 
 type AppDetailedInfo struct {
@@ -695,7 +760,7 @@ func AppDetails(
 	var status Status
 	go func() {
 		defer wg.Done()
-		app, err := getAppStatus(ctx, docker, userApp)
+		app, err := getAppStatus(ctx, docker.Client(), userApp)
 		if err != nil {
 			slog.Warn("unable to get app status", slog.String("error", err.Error()), slog.String("path", userApp.FullPath.String()))
 			status = StatusStopped

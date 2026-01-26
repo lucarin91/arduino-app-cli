@@ -262,7 +262,7 @@ paths:
       summary: Get app exposed ports
       tags:
       - Application
-  /v1/apps/{appID}/sketch/libraries/:
+  /v1/apps/{appID}/sketch/libraries:
     get:
       description: Lists the libraries used in the App' sketch.
       operationId: appSketchListLibraries
@@ -303,7 +303,7 @@ paths:
         schema:
           description: if set to "true", the library's dependencies will be removed
             as well if not needed anymore.
-          type: string
+          type: boolean
       - description: application identifier.
         in: path
         name: appID
@@ -347,7 +347,7 @@ paths:
         schema:
           description: if set to "true", the library's dependencies will be added
             as well.
-          type: string
+          type: boolean
       - description: application identifier.
         in: path
         name: appID
@@ -522,6 +522,43 @@ paths:
       summary: Get application events
       tags:
       - Application
+  /v1/apps/{id}/export:
+    get:
+      description: Exports the application folder structure as a ZIP file.
+      operationId: exportApp
+      parameters:
+      - description: application identifier.
+        in: path
+        name: id
+        required: true
+        schema:
+          description: application identifier.
+          type: string
+      - description: If true, the exported archive will include the 'data' directory.
+          Default is false.
+        in: query
+        name: include_data
+        schema:
+          description: If true, the exported archive will include the 'data' directory.
+            Default is false.
+          type: boolean
+      responses:
+        "200":
+          content:
+            application/zip:
+              schema:
+                format: binary
+                type: string
+          description: The ZIP archive containing the application structure.
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+      summary: Exports an app as ZIP
+      tags:
+      - Application
   /v1/apps/{id}/logs:
     get:
       description: Obtain a ServerSentEvnt stream of logs. It is possible to apply
@@ -671,6 +708,56 @@ paths:
         "500":
           $ref: '#/components/responses/InternalServerError'
       summary: Get application events
+      tags:
+      - Application
+  /v1/apps/import:
+    post:
+      description: Imports a new application from a ZIP file. The system extracts
+        the archive, validates the app.yaml manifest, sanitizes the name, and returns
+        the ID in Base64.
+      operationId: importApp
+      parameters:
+      - description: The ZIP archive. Must contain app.yaml (with a valid 'name')
+          and python/main.py. The app folder name will be calculated from the app
+          name.
+        in: query
+        name: file
+        schema:
+          description: The ZIP archive. Must contain app.yaml (with a valid 'name')
+            and python/main.py. The app folder name will be calculated from the app
+            name.
+          format: base64
+          type: string
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              properties:
+                file:
+                  description: The ZIP archive. Must contain app.yaml (with a valid
+                    'name') and python/main.py. The app folder name will be calculated
+                    from the app name.
+                  format: base64
+                  type: string
+              type: object
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                properties:
+                  id:
+                    description: The Base64 encoded identifier of the imported application.
+                    type: string
+                type: object
+          description: Application imported successfully.
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+      summary: Imports an app from ZIP
       tags:
       - Application
   /v1/bricks:
@@ -1595,8 +1682,6 @@ components:
         pagination:
           $ref: '#/components/schemas/Pagination'
       type: object
-    LibraryReleaseID:
-      type: object
     PackageType:
       description: Package type
       enum:
@@ -1646,15 +1731,20 @@ components:
       properties:
         libraries:
           items:
-            $ref: '#/components/schemas/LibraryReleaseID'
+            type: string
           nullable: true
           type: array
       type: object
     SketchListLibraryResponse:
       properties:
+        dependencies:
+          items:
+            type: string
+          nullable: true
+          type: array
         libraries:
           items:
-            $ref: '#/components/schemas/LibraryReleaseID'
+            type: string
           nullable: true
           type: array
       type: object
@@ -1662,7 +1752,7 @@ components:
       properties:
         libraries:
           items:
-            $ref: '#/components/schemas/LibraryReleaseID'
+            type: string
           nullable: true
           type: array
       type: object
@@ -1674,6 +1764,7 @@ components:
       - stopping
       - stopped
       - failed
+      - uninitialized
       type: string
       uniqueItems: true
     UpdateCheckResult:

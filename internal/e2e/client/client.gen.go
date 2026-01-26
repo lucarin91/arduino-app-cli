@@ -24,11 +24,12 @@ const (
 
 // Defines values for Status.
 const (
-	Failed   Status = "failed"
-	Running  Status = "running"
-	Starting Status = "starting"
-	Stopped  Status = "stopped"
-	Stopping Status = "stopping"
+	Failed        Status = "failed"
+	Running       Status = "running"
+	Starting      Status = "starting"
+	Stopped       Status = "stopped"
+	Stopping      Status = "stopping"
+	Uninitialized Status = "uninitialized"
 )
 
 // Defines values for ListLibrariesParamsSort.
@@ -66,7 +67,7 @@ type AIModelsListResult struct {
 
 // AppBrickInstancesResult defines model for AppBrickInstancesResult.
 type AppBrickInstancesResult struct {
-	Bricks *[]BrickInstanceListItem `json:"bricks"`
+	Bricks *[]BrickInstance `json:"bricks"`
 }
 
 // AppDetailedBrick defines model for AppDetailedBrick.
@@ -158,7 +159,7 @@ type BrickDetailsResult struct {
 	UsedByApps       *[]AppReference        `json:"used_by_apps"`
 
 	// Variables Deprecated: use config_variables instead. This field is kept for backward compatibility.
-	Variables *map[string]BrickVariable `json:"variables"`
+	Variables *map[string]BrickVariable `json:"variables,omitempty"`
 }
 
 // BrickInstance defines model for BrickInstance.
@@ -172,21 +173,6 @@ type BrickInstance struct {
 	Name             *string                `json:"name,omitempty"`
 	RequireModel     *bool                  `json:"require_model,omitempty"`
 	Status           *string                `json:"status,omitempty"`
-
-	// Variables Deprecated: use config_variables instead. This field is kept for backward compatibility.
-	Variables *map[string]string `json:"variables,omitempty"`
-}
-
-// BrickInstanceListItem defines model for BrickInstanceListItem.
-type BrickInstanceListItem struct {
-	Author          *string                `json:"author,omitempty"`
-	Category        *string                `json:"category,omitempty"`
-	ConfigVariables *[]BrickConfigVariable `json:"config_variables,omitempty"`
-	Id              *string                `json:"id,omitempty"`
-	Model           *string                `json:"model,omitempty"`
-	Name            *string                `json:"name,omitempty"`
-	RequireModel    *bool                  `json:"require_model,omitempty"`
-	Status          *string                `json:"status,omitempty"`
 
 	// Variables Deprecated: use config_variables instead. This field is kept for backward compatibility.
 	Variables *map[string]string `json:"variables,omitempty"`
@@ -326,9 +312,6 @@ type LibraryListResponse struct {
 	Pagination *Pagination `json:"pagination,omitempty"`
 }
 
-// LibraryReleaseID defines model for LibraryReleaseID.
-type LibraryReleaseID = map[string]interface{}
-
 // PackageType Package type
 type PackageType string
 
@@ -361,17 +344,18 @@ type PropertyKeysResponse struct {
 
 // SketchAddLibraryResponse defines model for SketchAddLibraryResponse.
 type SketchAddLibraryResponse struct {
-	Libraries *[]LibraryReleaseID `json:"libraries"`
+	Libraries *[]string `json:"libraries"`
 }
 
 // SketchListLibraryResponse defines model for SketchListLibraryResponse.
 type SketchListLibraryResponse struct {
-	Libraries *[]LibraryReleaseID `json:"libraries"`
+	Dependencies *[]string `json:"dependencies"`
+	Libraries    *[]string `json:"libraries"`
 }
 
 // SketchRemoveLibraryResponse defines model for SketchRemoveLibraryResponse.
 type SketchRemoveLibraryResponse struct {
-	Libraries *[]LibraryReleaseID `json:"libraries"`
+	Libraries *[]string `json:"libraries"`
 }
 
 // Status Application status
@@ -430,10 +414,34 @@ type CreateAppParams struct {
 	SkipSketch *bool `form:"skip-sketch,omitempty" json:"skip-sketch,omitempty"`
 }
 
+// ImportAppFormdataBody defines parameters for ImportApp.
+type ImportAppFormdataBody struct {
+	// File The ZIP archive. Must contain app.yaml (with a valid 'name') and python/main.py. The app folder name will be calculated from the app name.
+	File *string `form:"file,omitempty" json:"file,omitempty"`
+}
+
+// ImportAppParams defines parameters for ImportApp.
+type ImportAppParams struct {
+	// File The ZIP archive. Must contain app.yaml (with a valid 'name') and python/main.py. The app folder name will be calculated from the app name.
+	File *string `form:"file,omitempty" json:"file,omitempty"`
+}
+
+// AppSketchRemoveLibraryParams defines parameters for AppSketchRemoveLibrary.
+type AppSketchRemoveLibraryParams struct {
+	// RemoveDeps if set to "true", the library's dependencies will be removed as well if not needed anymore.
+	RemoveDeps *bool `form:"remove_deps,omitempty" json:"remove_deps,omitempty"`
+}
+
 // AppSketchAddLibraryParams defines parameters for AppSketchAddLibrary.
 type AppSketchAddLibraryParams struct {
 	// AddDeps if set to "true", the library's dependencies will be added as well.
-	AddDeps *string `form:"add_deps,omitempty" json:"add_deps,omitempty"`
+	AddDeps *bool `form:"add_deps,omitempty" json:"add_deps,omitempty"`
+}
+
+// ExportAppParams defines parameters for ExportApp.
+type ExportAppParams struct {
+	// IncludeData If true, the exported archive will include the 'data' directory. Default is false.
+	IncludeData *bool `form:"include_data,omitempty" json:"include_data,omitempty"`
 }
 
 // GetAppLogsParams defines parameters for GetAppLogs.
@@ -490,6 +498,9 @@ type CheckUpdateParams struct {
 
 // CreateAppJSONRequestBody defines body for CreateApp for application/json ContentType.
 type CreateAppJSONRequestBody = CreateAppRequest
+
+// ImportAppFormdataRequestBody defines body for ImportApp for application/x-www-form-urlencoded ContentType.
+type ImportAppFormdataRequestBody ImportAppFormdataBody
 
 // UpdateAppBrickInstanceJSONRequestBody defines body for UpdateAppBrickInstance for application/json ContentType.
 type UpdateAppBrickInstanceJSONRequestBody = BrickCreateUpdateRequest
@@ -590,6 +601,11 @@ type ClientInterface interface {
 	// GetAppsEvents request
 	GetAppsEvents(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ImportAppWithBody request with any body
+	ImportAppWithBody(ctx context.Context, params *ImportAppParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ImportAppWithFormdataBody(ctx context.Context, params *ImportAppParams, body ImportAppFormdataRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetAppBrickInstances request
 	GetAppBrickInstances(ctx context.Context, appID string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -616,7 +632,7 @@ type ClientInterface interface {
 	AppSketchListLibraries(ctx context.Context, appID string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// AppSketchRemoveLibrary request
-	AppSketchRemoveLibrary(ctx context.Context, appID string, libRef string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	AppSketchRemoveLibrary(ctx context.Context, appID string, libRef string, params *AppSketchRemoveLibraryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// AppSketchAddLibrary request
 	AppSketchAddLibrary(ctx context.Context, appID string, libRef string, params *AppSketchAddLibraryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -639,6 +655,9 @@ type ClientInterface interface {
 
 	// GetAppEvents request
 	GetAppEvents(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ExportApp request
+	ExportApp(ctx context.Context, id string, params *ExportAppParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetAppLogs request
 	GetAppLogs(ctx context.Context, id string, params *GetAppLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -735,6 +754,30 @@ func (c *Client) CreateApp(ctx context.Context, params *CreateAppParams, body Cr
 
 func (c *Client) GetAppsEvents(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetAppsEventsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ImportAppWithBody(ctx context.Context, params *ImportAppParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewImportAppRequestWithBody(c.Server, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ImportAppWithFormdataBody(ctx context.Context, params *ImportAppParams, body ImportAppFormdataRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewImportAppRequestWithFormdataBody(c.Server, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -853,8 +896,8 @@ func (c *Client) AppSketchListLibraries(ctx context.Context, appID string, reqEd
 	return c.Client.Do(req)
 }
 
-func (c *Client) AppSketchRemoveLibrary(ctx context.Context, appID string, libRef string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewAppSketchRemoveLibraryRequest(c.Server, appID, libRef)
+func (c *Client) AppSketchRemoveLibrary(ctx context.Context, appID string, libRef string, params *AppSketchRemoveLibraryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAppSketchRemoveLibraryRequest(c.Server, appID, libRef, params)
 	if err != nil {
 		return nil, err
 	}
@@ -951,6 +994,18 @@ func (c *Client) CloneApp(ctx context.Context, id string, body CloneAppJSONReque
 
 func (c *Client) GetAppEvents(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetAppEventsRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ExportApp(ctx context.Context, id string, params *ExportAppParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExportAppRequest(c.Server, id, params)
 	if err != nil {
 		return nil, err
 	}
@@ -1343,6 +1398,68 @@ func NewGetAppsEventsRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewImportAppRequestWithFormdataBody calls the generic ImportApp builder with application/x-www-form-urlencoded body
+func NewImportAppRequestWithFormdataBody(server string, params *ImportAppParams, body ImportAppFormdataRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	bodyStr, err := runtime.MarshalForm(body, nil)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = strings.NewReader(bodyStr.Encode())
+	return NewImportAppRequestWithBody(server, params, "application/x-www-form-urlencoded", bodyReader)
+}
+
+// NewImportAppRequestWithBody generates requests for ImportApp with any type of body
+func NewImportAppRequestWithBody(server string, params *ImportAppParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/apps/import")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.File != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "file", runtime.ParamLocationQuery, *params.File); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewGetAppBrickInstancesRequest generates requests for GetAppBrickInstances
 func NewGetAppBrickInstancesRequest(server string, appID string) (*http.Request, error) {
 	var err error
@@ -1617,7 +1734,7 @@ func NewAppSketchListLibrariesRequest(server string, appID string) (*http.Reques
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/v1/apps/%s/sketch/libraries/", pathParam0)
+	operationPath := fmt.Sprintf("/v1/apps/%s/sketch/libraries", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -1636,7 +1753,7 @@ func NewAppSketchListLibrariesRequest(server string, appID string) (*http.Reques
 }
 
 // NewAppSketchRemoveLibraryRequest generates requests for AppSketchRemoveLibrary
-func NewAppSketchRemoveLibraryRequest(server string, appID string, libRef string) (*http.Request, error) {
+func NewAppSketchRemoveLibraryRequest(server string, appID string, libRef string, params *AppSketchRemoveLibraryParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -1666,6 +1783,28 @@ func NewAppSketchRemoveLibraryRequest(server string, appID string, libRef string
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.RemoveDeps != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "remove_deps", runtime.ParamLocationQuery, *params.RemoveDeps); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
 	}
 
 	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
@@ -1925,6 +2064,62 @@ func NewGetAppEventsRequest(server string, id string) (*http.Request, error) {
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewExportAppRequest generates requests for ExportApp
+func NewExportAppRequest(server string, id string, params *ExportAppParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/apps/%s/export", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.IncludeData != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "include_data", runtime.ParamLocationQuery, *params.IncludeData); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
 	}
 
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
@@ -2766,6 +2961,11 @@ type ClientWithResponsesInterface interface {
 	// GetAppsEventsWithResponse request
 	GetAppsEventsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetAppsEventsResp, error)
 
+	// ImportAppWithBodyWithResponse request with any body
+	ImportAppWithBodyWithResponse(ctx context.Context, params *ImportAppParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ImportAppResp, error)
+
+	ImportAppWithFormdataBodyWithResponse(ctx context.Context, params *ImportAppParams, body ImportAppFormdataRequestBody, reqEditors ...RequestEditorFn) (*ImportAppResp, error)
+
 	// GetAppBrickInstancesWithResponse request
 	GetAppBrickInstancesWithResponse(ctx context.Context, appID string, reqEditors ...RequestEditorFn) (*GetAppBrickInstancesResp, error)
 
@@ -2792,7 +2992,7 @@ type ClientWithResponsesInterface interface {
 	AppSketchListLibrariesWithResponse(ctx context.Context, appID string, reqEditors ...RequestEditorFn) (*AppSketchListLibrariesResp, error)
 
 	// AppSketchRemoveLibraryWithResponse request
-	AppSketchRemoveLibraryWithResponse(ctx context.Context, appID string, libRef string, reqEditors ...RequestEditorFn) (*AppSketchRemoveLibraryResp, error)
+	AppSketchRemoveLibraryWithResponse(ctx context.Context, appID string, libRef string, params *AppSketchRemoveLibraryParams, reqEditors ...RequestEditorFn) (*AppSketchRemoveLibraryResp, error)
 
 	// AppSketchAddLibraryWithResponse request
 	AppSketchAddLibraryWithResponse(ctx context.Context, appID string, libRef string, params *AppSketchAddLibraryParams, reqEditors ...RequestEditorFn) (*AppSketchAddLibraryResp, error)
@@ -2815,6 +3015,9 @@ type ClientWithResponsesInterface interface {
 
 	// GetAppEventsWithResponse request
 	GetAppEventsWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*GetAppEventsResp, error)
+
+	// ExportAppWithResponse request
+	ExportAppWithResponse(ctx context.Context, id string, params *ExportAppParams, reqEditors ...RequestEditorFn) (*ExportAppResp, error)
 
 	// GetAppLogsWithResponse request
 	GetAppLogsWithResponse(ctx context.Context, id string, params *GetAppLogsParams, reqEditors ...RequestEditorFn) (*GetAppLogsResp, error)
@@ -2937,6 +3140,34 @@ func (r GetAppsEventsResp) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r GetAppsEventsResp) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ImportAppResp struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *struct {
+		// Id The Base64 encoded identifier of the imported application.
+		Id *string `json:"id,omitempty"`
+	}
+	JSON400 *BadRequest
+	JSON409 *Conflict
+	JSON500 *InternalServerError
+}
+
+// Status returns HTTPResponse.Status
+func (r ImportAppResp) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ImportAppResp) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -3279,6 +3510,30 @@ func (r GetAppEventsResp) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r GetAppEventsResp) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ExportAppResp struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *BadRequest
+	JSON404      *NotFound
+	JSON500      *InternalServerError
+}
+
+// Status returns HTTPResponse.Status
+func (r ExportAppResp) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ExportAppResp) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -3743,6 +3998,23 @@ func (c *ClientWithResponses) GetAppsEventsWithResponse(ctx context.Context, req
 	return ParseGetAppsEventsResp(rsp)
 }
 
+// ImportAppWithBodyWithResponse request with arbitrary body returning *ImportAppResp
+func (c *ClientWithResponses) ImportAppWithBodyWithResponse(ctx context.Context, params *ImportAppParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ImportAppResp, error) {
+	rsp, err := c.ImportAppWithBody(ctx, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseImportAppResp(rsp)
+}
+
+func (c *ClientWithResponses) ImportAppWithFormdataBodyWithResponse(ctx context.Context, params *ImportAppParams, body ImportAppFormdataRequestBody, reqEditors ...RequestEditorFn) (*ImportAppResp, error) {
+	rsp, err := c.ImportAppWithFormdataBody(ctx, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseImportAppResp(rsp)
+}
+
 // GetAppBrickInstancesWithResponse request returning *GetAppBrickInstancesResp
 func (c *ClientWithResponses) GetAppBrickInstancesWithResponse(ctx context.Context, appID string, reqEditors ...RequestEditorFn) (*GetAppBrickInstancesResp, error) {
 	rsp, err := c.GetAppBrickInstances(ctx, appID, reqEditors...)
@@ -3823,8 +4095,8 @@ func (c *ClientWithResponses) AppSketchListLibrariesWithResponse(ctx context.Con
 }
 
 // AppSketchRemoveLibraryWithResponse request returning *AppSketchRemoveLibraryResp
-func (c *ClientWithResponses) AppSketchRemoveLibraryWithResponse(ctx context.Context, appID string, libRef string, reqEditors ...RequestEditorFn) (*AppSketchRemoveLibraryResp, error) {
-	rsp, err := c.AppSketchRemoveLibrary(ctx, appID, libRef, reqEditors...)
+func (c *ClientWithResponses) AppSketchRemoveLibraryWithResponse(ctx context.Context, appID string, libRef string, params *AppSketchRemoveLibraryParams, reqEditors ...RequestEditorFn) (*AppSketchRemoveLibraryResp, error) {
+	rsp, err := c.AppSketchRemoveLibrary(ctx, appID, libRef, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -3899,6 +4171,15 @@ func (c *ClientWithResponses) GetAppEventsWithResponse(ctx context.Context, id s
 		return nil, err
 	}
 	return ParseGetAppEventsResp(rsp)
+}
+
+// ExportAppWithResponse request returning *ExportAppResp
+func (c *ClientWithResponses) ExportAppWithResponse(ctx context.Context, id string, params *ExportAppParams, reqEditors ...RequestEditorFn) (*ExportAppResp, error) {
+	rsp, err := c.ExportApp(ctx, id, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExportAppResp(rsp)
 }
 
 // GetAppLogsWithResponse request returning *GetAppLogsResp
@@ -4165,6 +4446,56 @@ func ParseGetAppsEventsResp(rsp *http.Response) (*GetAppsEventsResp, error) {
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseImportAppResp parses an HTTP response from a ImportAppWithResponse call
+func ParseImportAppResp(rsp *http.Response) (*ImportAppResp, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ImportAppResp{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest struct {
+			// Id The Base64 encoded identifier of the imported application.
+			Id *string `json:"id,omitempty"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest InternalServerError
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -4767,6 +5098,46 @@ func ParseGetAppEventsResp(rsp *http.Response) (*GetAppEventsResp, error) {
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseExportAppResp parses an HTTP response from a ExportAppWithResponse call
+func ParseExportAppResp(rsp *http.Response) (*ExportAppResp, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ExportAppResp{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest InternalServerError
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {

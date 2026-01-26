@@ -44,9 +44,14 @@ type UpgradablePackage struct {
 	ToVersion    string      `json:"to_version"`
 }
 
+type PackageInfo struct {
+	Name      string
+	ToVersion string
+}
+
 type ServiceUpdater interface {
 	ListUpgradablePackages(ctx context.Context, matcher func(UpgradablePackage) bool) ([]UpgradablePackage, error)
-	UpgradePackages(ctx context.Context, names []string) (<-chan Event, error)
+	UpgradePackages(ctx context.Context, packages []PackageInfo, eventCB EventCallback) error
 }
 
 type Manager struct {
@@ -116,14 +121,14 @@ func (m *Manager) UpgradePackages(ctx context.Context, pkgs []UpgradablePackage)
 		return ErrOperationAlreadyInProgress
 	}
 	ctx = context.WithoutCancel(ctx)
-	var debPkgs []string
-	var arduinoPlatform []string
+	var debPkgs []PackageInfo
+	var arduinoPlatform []PackageInfo
 	for _, v := range pkgs {
 		switch v.Type {
 		case Arduino:
-			arduinoPlatform = append(arduinoPlatform, v.Name)
+			arduinoPlatform = append(arduinoPlatform, PackageInfo{Name: v.Name, ToVersion: v.ToVersion})
 		case Debian:
-			debPkgs = append(debPkgs, v.Name)
+			debPkgs = append(debPkgs, PackageInfo{Name: v.Name, ToVersion: v.ToVersion})
 		default:
 			return fmt.Errorf("unknown package type %s", v.Type)
 		}
@@ -131,27 +136,21 @@ func (m *Manager) UpgradePackages(ctx context.Context, pkgs []UpgradablePackage)
 
 	go func() {
 		defer m.lock.Unlock()
+
 		// We are launching on purpose the update sequentially. The reason is that
 		// the deb pkgs restart the orchestrator, and if we run in parallel the
 		// update of the cores we will end up with inconsistent state, or
 		// we need to re run the upgrade because the orchestrator interrupted
 		// in the middle the upgrade of the cores.
-		arduinoEvents, err := m.arduinoPlatformUpdateService.UpgradePackages(ctx, arduinoPlatform)
-		if err != nil {
+		if err := m.arduinoPlatformUpdateService.UpgradePackages(ctx, arduinoPlatform, m.broadcast); err != nil {
 			m.broadcast(NewErrorEvent(fmt.Errorf("failed to upgrade Arduino packages: %w", err)))
-			return
-		}
-		for e := range arduinoEvents {
-			m.broadcast(e)
+
+			// continue with deb packages upgrade.
 		}
 
-		aptEvents, err := m.debUpdateService.UpgradePackages(ctx, debPkgs)
-		if err != nil {
+		if err := m.debUpdateService.UpgradePackages(ctx, debPkgs, m.broadcast); err != nil {
 			m.broadcast(NewErrorEvent(fmt.Errorf("failed to upgrade APT packages: %w", err)))
 			return
-		}
-		for e := range aptEvents {
-			m.broadcast(e)
 		}
 
 		m.broadcast(NewDataEvent(DoneEvent, "Update completed"))

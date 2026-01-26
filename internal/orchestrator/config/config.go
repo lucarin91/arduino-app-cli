@@ -16,6 +16,7 @@
 package config
 
 import (
+	"cmp"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -25,21 +26,23 @@ import (
 	"strings"
 
 	"github.com/arduino/go-paths-helper"
+	semver "go.bug.st/relaxed-semver"
 )
 
 // runnerVersion do not edit, this is generate with `task generate:assets`
 var RunnerVersion = "0.6.3"
 
 type Configuration struct {
-	appsDir            *paths.Path
-	dataDir            *paths.Path
-	routerSocketPath   *paths.Path
-	customEIModelsDir  *paths.Path
-	PythonImage        string
-	UsedPythonImageTag string
-	RunnerVersion      string
-	AllowRoot          bool
-	LibrariesAPIURL    *url.URL
+	appsDir                          *paths.Path
+	dataDir                          *paths.Path
+	routerSocketPath                 *paths.Path
+	customEIModelsDir                *paths.Path
+	PythonImage                      string
+	UsedPythonImageTag               string
+	RunnerVersion                    string
+	AllowRoot                        bool
+	LibrariesAPIURL                  *url.URL
+	ArduinoPlatformVersionConstraint semver.Constraint
 }
 
 func NewFromEnv() (Configuration, error) {
@@ -102,16 +105,25 @@ func NewFromEnv() (Configuration, error) {
 		return Configuration{}, fmt.Errorf("invalid LIBRARIES_API_URL: %w", err)
 	}
 
+	constraintStr := cmp.Or(os.Getenv("ARDUINO_APP_CLI__PLATFORM_VERSION_CONSTRAINT"), "<1.0.0")
+
+	constraint, err := semver.ParseConstraint(constraintStr)
+	if err != nil {
+		return Configuration{}, fmt.Errorf("invalid version constraint: %w", err)
+	}
+	slog.Debug("Using update version constraint", slog.String("constraint", constraintStr))
+
 	c := Configuration{
-		appsDir:            appsDir,
-		dataDir:            dataDir,
-		routerSocketPath:   routerSocket,
-		customEIModelsDir:  customEIModelsDir,
-		PythonImage:        pythonImage,
-		UsedPythonImageTag: usedPythonImageTag,
-		RunnerVersion:      RunnerVersion,
-		AllowRoot:          allowRoot,
-		LibrariesAPIURL:    parsedLibrariesURL,
+		appsDir:                          appsDir,
+		dataDir:                          dataDir,
+		routerSocketPath:                 routerSocket,
+		customEIModelsDir:                customEIModelsDir,
+		PythonImage:                      pythonImage,
+		UsedPythonImageTag:               usedPythonImageTag,
+		RunnerVersion:                    RunnerVersion,
+		AllowRoot:                        allowRoot,
+		LibrariesAPIURL:                  parsedLibrariesURL,
+		ArduinoPlatformVersionConstraint: constraint,
 	}
 	if err := c.init(); err != nil {
 		return Configuration{}, err

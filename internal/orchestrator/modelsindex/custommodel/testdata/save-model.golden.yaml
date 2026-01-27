@@ -1,0 +1,12 @@
+id: my-model-id
+name: my custom model
+description: test description
+bricks:
+- id: arduino:a-brick-id
+  model_configuration:
+    MY_ENV_1: prod
+    MY_ENV_2: true
+metadata:
+  a-bool-metadata: true
+  a-int-metadata: 1
+  a-string-metadata: a-string-value

@@ -16,10 +16,17 @@
 package modelsindex
 
 import (
+	"errors"
+	"fmt"
+	"log/slog"
 	"slices"
+	"strconv"
+
+	"github.com/arduino/arduino-app-cli/internal/orchestrator/modelsindex/custommodel"
 
 	"github.com/arduino/go-paths-helper"
 	"github.com/goccy/go-yaml"
+	"go.bug.st/f"
 )
 
 type assetsModelList struct {
@@ -44,6 +51,7 @@ func (b *assetsModelList) UnmarshalYAML(unmarshal func(any) error) error {
 
 type AIModel struct {
 	ID                 string            `yaml:"-"`
+	ModelFolderPath    *paths.Path       `yaml:"-"`
 	Name               string            `yaml:"name"`
 	ModuleDescription  string            `yaml:"description"`
 	Runner             string            `yaml:"runner"`
@@ -54,26 +62,29 @@ type AIModel struct {
 }
 
 type ModelsIndex struct {
-	Models []AIModel
+	PreInstalledModels []AIModel
+	modelsDir          *paths.Path
 }
 
 func (m *ModelsIndex) GetModels() []AIModel {
-	return m.Models
+	return m.loadModels()
 }
 
 func (m *ModelsIndex) GetModelByID(id string) (*AIModel, bool) {
-	idx := slices.IndexFunc(m.Models, func(v AIModel) bool { return v.ID == id })
+	models := m.loadModels()
+	idx := slices.IndexFunc(models, func(v AIModel) bool { return v.ID == id })
 	if idx == -1 {
 		return nil, false
 	}
-	return &m.Models[idx], true
+	return &models[idx], true
 }
 
 func (m *ModelsIndex) GetModelsByBrick(brick string) []AIModel {
 	var matches []AIModel
-	for i := range m.Models {
-		if len(m.Models[i].Bricks) > 0 && slices.Contains(m.Models[i].Bricks, brick) {
-			matches = append(matches, m.Models[i])
+	models := m.loadModels()
+	for i := range models {
+		if len(models[i].Bricks) > 0 && slices.Contains(models[i].Bricks, brick) {
+			matches = append(matches, models[i])
 		}
 	}
 	if len(matches) == 0 {
@@ -84,7 +95,7 @@ func (m *ModelsIndex) GetModelsByBrick(brick string) []AIModel {
 
 func (m *ModelsIndex) GetModelsByBricks(bricks []string) []AIModel {
 	var matchingModels []AIModel
-	for _, model := range m.Models {
+	for _, model := range m.loadModels() {
 		for _, modelBrick := range model.Bricks {
 			if slices.Contains(bricks, modelBrick) {
 				matchingModels = append(matchingModels, model)
@@ -94,8 +105,31 @@ func (m *ModelsIndex) GetModelsByBricks(bricks []string) []AIModel {
 	}
 	return matchingModels
 }
+func (m *ModelsIndex) loadModels() []AIModel {
+	eimodels, err := loadCustomModels(m.modelsDir)
+	if err != nil {
+		slog.Error("cannot load edge impulse custom models", "err", err)
+	}
+	return append(m.PreInstalledModels, eimodels...)
+}
 
-func Load(dir *paths.Path) (*ModelsIndex, error) {
+func Load(dir *paths.Path, modelsDir *paths.Path) (*ModelsIndex, error) {
+	if dir == nil && modelsDir == nil {
+		return &ModelsIndex{}, errors.New("either dir or modelsDir must be provided")
+	}
+	models, err := loadPreInstalledModels(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ModelsIndex{PreInstalledModels: models, modelsDir: modelsDir}, nil
+}
+
+func loadPreInstalledModels(dir *paths.Path) ([]AIModel, error) {
+	if dir == nil {
+		// skip loading pre-installed models
+		return []AIModel{}, nil
+	}
 	content, err := dir.Join("models-list.yaml").ReadFile()
 	if err != nil {
 		return nil, err
@@ -113,5 +147,78 @@ func Load(dir *paths.Path) (*ModelsIndex, error) {
 			models[i] = model
 		}
 	}
-	return &ModelsIndex{Models: models}, nil
+	return models, nil
+}
+
+func loadCustomModels(dir *paths.Path) ([]AIModel, error) {
+	if dir == nil {
+		// skip loading custom models
+		return []AIModel{}, nil
+	}
+	models := make([]AIModel, 0)
+	res, err := dir.ReadDirRecursiveFiltered(func(file *paths.Path) bool {
+		if file.Join("model.yaml").NotExist() {
+			// let's continue scanning, the model can be in a subfolder
+			return true
+		}
+		return false
+	}, paths.FilterDirectories())
+	if err != nil {
+		slog.Error("unable to list models", slog.String("error", err.Error()), "dir", dir)
+		return models, err
+	}
+	for _, file := range res {
+		m, err := custommodel.Load(file)
+		if err != nil {
+			slog.Warn("unable to load custom model", slog.String("error", err.Error()), "path", file)
+			continue // FIXME: collect broken models
+		}
+		models = append(models, AIModel{
+			ID:                m.ModelDescriptor.ID,
+			Name:              m.ModelDescriptor.Name,
+			ModuleDescription: m.ModelDescriptor.Description,
+			Bricks: f.Map(m.ModelDescriptor.Bricks, func(b custommodel.BrickConfig) string {
+				return b.ID
+			}),
+			Metadata:           m.ModelDescriptor.Metadata,
+			ModelConfiguration: toLegacyModelConfiguration(m.ModelDescriptor.Bricks),
+			ModelFolderPath:    m.FullPath,
+		})
+	}
+
+	return models, nil
+}
+
+func toLegacyModelConfiguration(bricks []custommodel.BrickConfig) map[string]string {
+	toString := func(v any) string {
+		switch x := v.(type) {
+		case string:
+			return x
+		case []byte:
+			return string(x)
+		case bool:
+			return strconv.FormatBool(x)
+		case int:
+			return strconv.Itoa(x)
+		case int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+			return fmt.Sprintf("%v", x)
+		default:
+			slog.Warn("unsupported type %T", v)
+			return ""
+		}
+	}
+
+	var modelConfigs map[string]string
+	for _, b := range bricks {
+		if len(b.ModelConfiguration) == 0 {
+			continue
+		}
+		if modelConfigs == nil {
+			modelConfigs = make(map[string]string, len(b.ModelConfiguration))
+		}
+		for k, v := range b.ModelConfiguration {
+			modelConfigs[k] = toString(v)
+		}
+	}
+	return modelConfigs
 }

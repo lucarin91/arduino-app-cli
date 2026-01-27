@@ -1,0 +1,10 @@
+id: "my-model-id"
+name: "my custom model from edge impulse"
+description: "A small and accurate model for detecting bounding boxes for faces in images."
+category: "Images"
+bricks:
+  - id: "object-detection"
+metadata:
+  a-string-metadata: "a-string-value"
+  a-int-metadata: 1
+  a-bool-metadata: true

@@ -1,0 +1,13 @@
+name: Image detection with UI
+description: Image detection with UI
+ports:
+- 7860
+bricks:
+- arduino:arduino_cloud:
+    variables:
+      ARDUINO_DEVICE_ID: ""
+      ARDUINO_SECRET: ""
+- arduino:video_image_classification:
+    model: vision/yolo11
+    variables:
+      VIDEO_DEVICE: /dev/my_camera

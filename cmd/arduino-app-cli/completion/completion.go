@@ -95,7 +95,7 @@ func ApplicationNamesWithFilterFunc(cfg config.Configuration, filter func(apps o
 				res = append(res, cmdutil.IDToAlias(a.ID))
 			}
 		}
-		return res, cobra.ShellCompDirectiveNoFileComp
+		return res, cobra.ShellCompDirectiveDefault
 	}
 }
 

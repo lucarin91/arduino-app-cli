@@ -30,6 +30,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/arduino/arduino-cli/commands"
 	rpc "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/commands/v1"
@@ -1250,7 +1251,7 @@ func compileUploadSketch(
 	server, getCompileResult := commands.CompilerServerToStreams(ctx, w, w, nil)
 	compileReq := rpc.CompileRequest{
 		Instance:   inst,
-		Fqbn:       "arduino:zephyr:unoq",
+		Fqbn:       "arduino:zephyr:unoq:wait_linux_boot=app",
 		SketchPath: sketchPath.String(),
 		BuildPath:  buildPath,
 		Jobs:       2,
@@ -1277,17 +1278,23 @@ func compileUploadSketch(
 		slog.Info("Used library " + lib.GetName() + " (" + lib.GetVersion() + ") in " + lib.GetInstallDir())
 	}
 
-	if err := uploadSketchInRam(ctx, w, srv, inst, sketchPath.String(), buildPath); err != nil {
-		slog.Warn("failed to upload in ram mode, trying to configure the board in ram mode, and retry", slog.String("error", err.Error()))
-		if err := configureMicroInRamMode(ctx, w, srv, inst); err != nil {
-			return err
-		}
-		return uploadSketchInRam(ctx, w, srv, inst, sketchPath.String(), buildPath)
+	if err := uploadSketch(ctx, w, srv, inst, sketchPath.String(), buildPath); err != nil {
+		return err
 	}
+
+	// After the sketch is uploaded, we signal the microcontroller to start.
+	go func() {
+		time.Sleep(500 * time.Millisecond) // wait a bit.
+
+		if err := micro.SignalAppStart(); err != nil {
+			slog.Warn("failed to signal app start to microcontroller", slog.String("error", err.Error()))
+		}
+	}()
+
 	return nil
 }
 
-func uploadSketchInRam(ctx context.Context,
+func uploadSketch(ctx context.Context,
 	w io.Writer,
 	srv rpc.ArduinoCoreServiceServer,
 	inst *rpc.Instance,
@@ -1297,48 +1304,13 @@ func uploadSketchInRam(ctx context.Context,
 	stream, _ := commands.UploadToServerStreams(ctx, w, w)
 	if err := srv.Upload(&rpc.UploadRequest{
 		Instance:   inst,
-		Fqbn:       "arduino:zephyr:unoq:flash_mode=ram",
+		Fqbn:       "arduino:zephyr:unoq",
 		SketchPath: sketchPath,
 		ImportDir:  buildPath,
 	}, stream); err != nil {
 		return err
 	}
 	return nil
-}
-
-// configureMicroInRamMode uploads an empty binary overing any sketch previously uploaded in flash.
-// This is required to be able to upload sketches in ram mode after if there is already a sketch in flash.
-func configureMicroInRamMode(
-	ctx context.Context,
-	w io.Writer,
-	srv rpc.ArduinoCoreServiceServer,
-	inst *rpc.Instance,
-) error {
-	emptyBinDir := paths.New("/tmp/empty")
-	_ = emptyBinDir.MkdirAll()
-	defer func() { _ = emptyBinDir.RemoveAll() }()
-
-	zeros, err := os.Open("/dev/zero")
-	if err != nil {
-		return err
-	}
-	defer zeros.Close()
-
-	empty, err := emptyBinDir.Join("empty.ino.elf-zsk.bin").Create()
-	if err != nil {
-		return err
-	}
-	defer empty.Close()
-	if _, err := io.CopyN(empty, zeros, 50); err != nil {
-		return err
-	}
-
-	stream, _ := commands.UploadToServerStreams(ctx, w, w)
-	return srv.Upload(&rpc.UploadRequest{
-		Instance:  inst,
-		Fqbn:      "arduino:zephyr:unoq:flash_mode=flash",
-		ImportDir: emptyBinDir.String(),
-	}, stream)
 }
 
 type ConfigResponse struct {

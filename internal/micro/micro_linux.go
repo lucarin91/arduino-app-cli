@@ -19,6 +19,8 @@
 package micro
 
 import (
+	"time"
+
 	"github.com/warthog618/go-gpiocdev"
 )
 
@@ -52,4 +54,28 @@ func disableOnBoard() error {
 	defer line.Close()
 
 	return line.SetValue(0)
+}
+
+func signalAppStart() error {
+	// wait a bit to ensure the micro is fully reset.
+	time.Sleep(500 * time.Millisecond)
+
+	chip, err := gpiocdev.NewChip(ChipName)
+	if err != nil {
+		return err
+	}
+	defer chip.Close()
+
+	line, err := chip.RequestLine(AnimationPin, gpiocdev.AsOutput(0))
+	if err != nil {
+		return err
+	}
+	defer line.Close()
+
+	// Toggle the down and up to signal the app start
+	_ = line.SetValue(0)
+	time.Sleep(100 * time.Millisecond)
+	_ = line.SetValue(1)
+
+	return nil
 }

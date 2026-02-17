@@ -27,3 +27,7 @@ func enableOnBoard() error {
 func disableOnBoard() error {
 	return fmt.Errorf("Enable is not supported on this platform")
 }
+
+func signalAppStart() error {
+	return fmt.Errorf("ActivateAfterResetAsync is not supported on this platform")
+}

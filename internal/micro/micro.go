@@ -20,8 +20,9 @@ import (
 )
 
 const (
-	ResetPin = 38
-	ChipName = "gpiochip1"
+	ResetPin     = 38
+	AnimationPin = 70
+	ChipName     = "gpiochip1"
 )
 
 func Reset() error {
@@ -41,4 +42,8 @@ func Enable() error {
 
 func Disable() error {
 	return disableOnBoard()
+}
+
+func SignalAppStart() error {
+	return signalAppStart()
 }

@@ -57,9 +57,6 @@ func disableOnBoard() error {
 }
 
 func signalAppStart() error {
-	// wait a bit to ensure the micro is fully reset.
-	time.Sleep(500 * time.Millisecond)
-
 	chip, err := gpiocdev.NewChip(ChipName)
 	if err != nil {
 		return err

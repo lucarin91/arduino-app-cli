@@ -22,8 +22,10 @@ import (
 	"log/slog"
 	"maps"
 	"os"
+	"os/user"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/arduino/go-paths-helper"
@@ -36,6 +38,7 @@ import (
 	"github.com/arduino/arduino-app-cli/internal/orchestrator/app"
 	"github.com/arduino/arduino-app-cli/internal/orchestrator/bricksindex"
 	"github.com/arduino/arduino-app-cli/internal/orchestrator/config"
+	"github.com/arduino/arduino-app-cli/internal/orchestrator/peripherals"
 	"github.com/arduino/arduino-app-cli/internal/store"
 )
 
@@ -61,7 +64,7 @@ type service struct {
 	Devices     []string                      `yaml:"devices"`
 	Ports       []string                      `yaml:"ports"`
 	User        string                        `yaml:"user"`
-	GroupAdd    []string                      `yaml:"group_add"`
+	GroupAdd    []uint32                      `yaml:"group_add"`
 	Entrypoint  string                        `yaml:"entrypoint"`
 	ExtraHosts  []string                      `yaml:"extra_hosts,omitempty"`
 	Labels      map[string]string             `yaml:"labels,omitempty"`
@@ -119,6 +122,7 @@ func (p *Provision) App(
 	cfg config.Configuration,
 	mapped_env map[string]string,
 	staticStore *store.StaticStore,
+	devices peripherals.AvailableDevices,
 ) error {
 	if arduinoApp == nil {
 		return fmt.Errorf("provisioning failed: arduinoApp is nil")
@@ -130,7 +134,7 @@ func (p *Provision) App(
 		}
 	}
 
-	return generateMainComposeFile(arduinoApp, bricksIndex, p.pythonImage, cfg, mapped_env, staticStore)
+	return generateMainComposeFile(arduinoApp, bricksIndex, p.pythonImage, cfg, mapped_env, staticStore, devices)
 }
 
 func (p *Provision) init(
@@ -212,6 +216,7 @@ func generateMainComposeFile(
 	cfg config.Configuration,
 	envs helpers.EnvVars,
 	staticStore *store.StaticStore,
+	devices peripherals.AvailableDevices,
 ) error {
 	slog.Debug("Generating main compose file for the App")
 
@@ -222,7 +227,6 @@ func generateMainComposeFile(
 
 	var composeFiles paths.PathList
 	services := make([]serviceInfo, 0, len(app.Descriptor.Bricks))
-	requiredDeviceClasses := make(map[string]any)
 	for _, brick := range app.Descriptor.Bricks {
 		idxBrick, found := bricksIndex.FindBrickByID(brick.ID)
 		slog.Debug("Processing brick", slog.String("brick_id", brick.ID), slog.Bool("found", found))
@@ -233,17 +237,6 @@ func generateMainComposeFile(
 		// 1. Retrieve ports that we have to expose defined in the brick
 		for _, p := range idxBrick.Ports {
 			ports[fmt.Sprintf("%s:%s", p, p)] = struct{}{}
-		}
-
-		// 2. Collect all the required device classes
-		if len(idxBrick.RequiredDevices) > 0 {
-			for _, deviceClass := range idxBrick.RequiredDevices {
-				// Do not reequire a "camera" class if the brick in the app requires a "remote camera" device
-				if deviceClass == CameraDevice && slices.Contains(brick.Devices, "remote_camera_0") {
-					continue
-				}
-				requiredDeviceClasses[deviceClass] = true
-			}
 		}
 
 		// The following code is needed only if the brick requires a container.
@@ -278,11 +271,8 @@ func generateMainComposeFile(
 		services = append(services, svcs...)
 	}
 
-	// 6. Collect all the required device classes from the app descriptor
-	if len(app.Descriptor.RequiredDevices) > 0 {
-		for _, deviceClass := range app.Descriptor.RequiredDevices {
-			requiredDeviceClasses[deviceClass] = true
-		}
+	if len(app.Descriptor.RequiredDevices) > 0 { // nolint:staticcheck
+		slog.Warn("The 'required_devices' field is deprecated. Please move requirements to the specific 'bricks' section.")
 	}
 
 	// Create a single docker-mainCompose that includes all the required services
@@ -322,15 +312,8 @@ func generateMainComposeFile(
 		})
 	}
 
-	// Check board devices and mount them if needed
-	devices, err := getDevices()
-	if err != nil {
-		return err
-	}
-	if err = validateDevices(devices, requiredDeviceClasses); err != nil {
-		return fmt.Errorf("missing required device: %w", err)
-	}
-	if devices.hasVideoDevice {
+	// provide additional devices to the container
+	if devices.HasVideoDevice {
 		// If we are adding video devices, mount also /dev/v4l if it exists to allow access to by-id/path links
 		if paths.New("/dev/v4l").Exist() {
 			volumes = append(volumes, volume{
@@ -340,7 +323,7 @@ func generateMainComposeFile(
 			})
 		}
 	}
-	if devices.hasSoundDevice {
+	if devices.HasSoundDevice {
 		// If we are adding sound devices, mount also /dev/snd/by-id if it exists to allow access to by-id links
 		if paths.New("/dev/snd/by-id").Exist() {
 			volumes = append(volumes, volume{
@@ -352,8 +335,7 @@ func generateMainComposeFile(
 	}
 
 	volumes = addLedControl(volumes)
-
-	groups := []string{"dialout", "video", "audio", "render"}
+	groups := lookupGroups("video", "audio", "render", "dialout")
 
 	// Define depends_on conditions
 	// Services with healthcheck will be started only when healthy
@@ -376,11 +358,11 @@ func generateMainComposeFile(
 			Image:      pythonImage,
 			Volumes:    volumes,
 			Ports:      slices.Collect(maps.Keys(ports)),
-			Devices:    devices.devicePaths,
+			Devices:    devices.DevicePaths,
 			Entrypoint: "/run.sh",
 			DependsOn:  dependsOn,
 			User:       getCurrentUser(),
-			GroupAdd:   append(groups, "gpiod"),
+			GroupAdd:   append(groups, lookupGroups("gpiod")...),
 			ExtraHosts: []string{"msgpack-rpc-router:host-gateway"},
 			Labels: map[string]string{
 				DockerAppLabel:     "true",
@@ -409,7 +391,7 @@ func generateMainComposeFile(
 
 	// If there are services that require devices, we need to generate an override compose file
 	// Write additional file to override devices section in included compose files
-	if err := generateServicesOverrideFile(app, services, devices.devicePaths, getCurrentUser(), groups, overrideComposeFile, envs); err != nil {
+	if err := generateServicesOverrideFile(app, services, devices.DevicePaths, getCurrentUser(), groups, overrideComposeFile, envs); err != nil {
 		return err
 	}
 
@@ -430,6 +412,28 @@ func generateMainComposeFile(
 
 	// Done!
 	return nil
+}
+
+// Resolve supplementary group IDs on the host dynamically
+// before assigning them to the container, as numeric GIDs
+// could differ between host and container environments.
+func lookupGroups(groupNames ...string) []uint32 {
+	resolvedGids := make([]uint32, 0, len(groupNames))
+
+	for _, name := range groupNames {
+		g, err := user.LookupGroup(name)
+		if err != nil {
+			slog.Warn("group not found on host; skipping", "group", name)
+			continue
+		}
+		gid, err := strconv.ParseUint(g.Gid, 10, 32)
+		if err != nil {
+			slog.Warn("failed to parse GID; skipping", "group", name)
+			continue
+		}
+		resolvedGids = append(resolvedGids, uint32(gid))
+	}
+	return resolvedGids
 }
 
 type serviceInfo struct {
@@ -471,7 +475,7 @@ func extractServicesFromComposeFile(composeFile *paths.Path) ([]serviceInfo, err
 	return services, nil
 }
 
-func generateServicesOverrideFile(arduinoApp *app.ArduinoApp, services []serviceInfo, devices []string, user string, groups []string, overrideComposeFile *paths.Path, envs helpers.EnvVars) error {
+func generateServicesOverrideFile(arduinoApp *app.ArduinoApp, services []serviceInfo, devices []string, user string, groups []uint32, overrideComposeFile *paths.Path, envs helpers.EnvVars) error {
 	if overrideComposeFile.Exist() {
 		if err := overrideComposeFile.Remove(); err != nil {
 			return fmt.Errorf("failed to remove existing override compose file: %w", err)
@@ -486,7 +490,7 @@ func generateServicesOverrideFile(arduinoApp *app.ArduinoApp, services []service
 	type serviceOverride struct {
 		User        *string           `yaml:"user,omitempty"`
 		Devices     *[]string         `yaml:"devices,omitempty"`
-		GroupAdd    *[]string         `yaml:"group_add,omitempty"`
+		GroupAdd    *[]uint32         `yaml:"group_add,omitempty"`
 		Labels      map[string]string `yaml:"labels,omitempty"`
 		Environment map[string]string `yaml:"environment,omitempty"`
 	}
@@ -500,6 +504,7 @@ func generateServicesOverrideFile(arduinoApp *app.ArduinoApp, services []service
 				DockerAppLabel:     "true",
 				DockerAppPathLabel: arduinoApp.FullPath.String(),
 			},
+			GroupAdd: &groups,
 		}
 		// If service defines a user, do not override it
 		if svc.user == nil {
@@ -507,7 +512,6 @@ func generateServicesOverrideFile(arduinoApp *app.ArduinoApp, services []service
 		}
 		if svc.requireDevices {
 			override.Devices = &devices
-			override.GroupAdd = &groups
 		}
 		override.Environment = envs
 		overrideCompose.Services[svc.name] = override
@@ -532,7 +536,7 @@ var (
 	// Regular expression to split on the first colon that is not followed by a hyphen
 	volumeColonSplitRE     = regexp.MustCompile(`:[^-]`)
 	volumeAppHomeReplaceRE = regexp.MustCompile(`\$\{APP_HOME(:-\.)?\}`)
-	volumePathReplaceRE    = regexp.MustCompile(`\$\{([A-Z_-]+)(:-)?([\/a-zA-Z0-9._-]+)?\}`)
+	volumePathReplaceRE    = regexp.MustCompile(`\$\{([A-Z_-]+)(:-)?((?:\$\{[A-Z_-]+\}|[\/a-zA-Z0-9._-])*)?\}`)
 )
 
 // provisionComposeVolumes ensure we create the parent folder with the correct owner.
@@ -583,7 +587,14 @@ func replaceDockerMacros(volume string, app *app.ArduinoApp, mapped_env map[stri
 			if value, ok := mapped_env[groups[1]]; ok {
 				volume = volumePathReplaceRE.ReplaceAllString(volume, value)
 			} else {
-				volume = volumePathReplaceRE.ReplaceAllString(volume, groups[3])
+				// Try to resolve with mapped environent variables as well
+				resolved := os.Expand(groups[3], func(key string) string {
+					if value, ok := mapped_env[key]; ok {
+						return value
+					}
+					return os.Getenv(key)
+				})
+				volume = volumePathReplaceRE.ReplaceAllString(volume, resolved)
 			}
 		default:
 			slog.Warn("Unexpected format for volume replacement", slog.String("volume", volume), slog.String("compose_file", additionalComposeFile))

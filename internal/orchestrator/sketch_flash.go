@@ -8,12 +8,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/arduino/arduino-app-cli/internal/micro"
 	"github.com/arduino/arduino-cli/commands"
 	rpc "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/commands/v1"
 	"github.com/arduino/go-paths-helper"
 	"github.com/sirupsen/logrus"
 	semver "go.bug.st/relaxed-semver"
+
+	"github.com/arduino/arduino-app-cli/internal/micro"
 )
 
 func uploadSketch(ctx context.Context,

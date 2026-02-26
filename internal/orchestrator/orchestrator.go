@@ -28,7 +28,6 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/arduino/arduino-cli/commands"
 	rpc "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/commands/v1"
@@ -1125,39 +1124,7 @@ func compileUploadSketch(
 		slog.Info("Used library " + lib.GetName() + " (" + lib.GetVersion() + ") in " + lib.GetInstallDir())
 	}
 
-	if err := uploadSketch(ctx, w, srv, inst, sketchPath.String(), buildPath); err != nil {
-		return err
-	}
-
-	// After the sketch is uploaded, we signal the microcontroller to start.
-	go func() {
-		time.Sleep(500 * time.Millisecond) // wait a bit.
-
-		if err := micro.SignalAppStart(); err != nil {
-			slog.Warn("failed to signal app start to microcontroller", slog.String("error", err.Error()))
-		}
-	}()
-
-	return nil
-}
-
-func uploadSketch(ctx context.Context,
-	w io.Writer,
-	srv rpc.ArduinoCoreServiceServer,
-	inst *rpc.Instance,
-	sketchPath string,
-	buildPath string,
-) error {
-	stream, _ := commands.UploadToServerStreams(ctx, w, w)
-	if err := srv.Upload(&rpc.UploadRequest{
-		Instance:   inst,
-		Fqbn:       "arduino:zephyr:unoq",
-		SketchPath: sketchPath,
-		ImportDir:  buildPath,
-	}, stream); err != nil {
-		return err
-	}
-	return nil
+	return uploadSketch(ctx, w, srv, inst, sketchPath.String(), buildPath)
 }
 
 type ConfigResponse struct {

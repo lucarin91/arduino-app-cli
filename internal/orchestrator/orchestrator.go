@@ -1097,8 +1097,8 @@ func compileUploadSketch(
 	hasWaitForApp := hasWaitForApp(ctx)
 	if hasWaitForApp {
 		fqbn += ":wait_linux_boot=app"
-		slog.Debug("compile and upload sketch", slog.String("fqbn", fqbn), slog.Bool("hasWaitForApp", hasWaitForApp))
 	}
+	slog.Debug("compile and upload sketch", slog.String("fqbn", fqbn), slog.Bool("hasWaitForApp", hasWaitForApp))
 
 	// build the sketch
 	server, getCompileResult := commands.CompilerServerToStreams(ctx, w, w, nil)

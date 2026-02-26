@@ -17,25 +17,6 @@ import (
 	"github.com/arduino/arduino-app-cli/internal/micro"
 )
 
-func uploadSketch(ctx context.Context,
-	w io.Writer,
-	srv rpc.ArduinoCoreServiceServer,
-	inst *rpc.Instance,
-	sketchPath string,
-	buildPath string,
-) error {
-	if ramMode, err := hasFlashToRam(ctx); err != nil {
-		slog.Warn("failed to check if flash to ram upload is supported, use ram mode", "error", err)
-		return uploadSketchInRam(ctx, w, srv, inst, sketchPath, buildPath)
-	} else if ramMode {
-		slog.Info("Using flash to ram upload mode")
-		return uploadSketchInRam(ctx, w, srv, inst, sketchPath, buildPath)
-	} else {
-		slog.Info("Using wait for app upload mode")
-		return uploadSketchWaitForApp(ctx, w, srv, inst, sketchPath, buildPath)
-	}
-}
-
 func uploadSketchInRam(ctx context.Context,
 	w io.Writer,
 	srv rpc.ArduinoCoreServiceServer,
@@ -128,66 +109,65 @@ func configureMicroInRamMode(
 	}, stream)
 }
 
-func hasFlashToRam(ctx context.Context) (bool, error) {
-	setConfig := func(ctx context.Context, srv rpc.ArduinoCoreServiceServer) error {
+func hasWaitForApp(ctx context.Context) bool {
+	check, err := func() (bool, error) {
+		logrus.SetLevel(logrus.ErrorLevel) // Reduce the log level of arduino-cli
+		srv := commands.NewArduinoCoreServer()
 		if _, err := srv.SettingsSetValue(ctx, &rpc.SettingsSetValueRequest{
 			Key:          "network.connection_timeout",
 			EncodedValue: "600s",
 			ValueFormat:  "cli",
 		}); err != nil {
-			return err
+			return false, err
 		}
 
-		return nil
-	}
+		var inst *rpc.Instance
+		if resp, err := srv.Create(ctx, &rpc.CreateRequest{}); err != nil {
+			return false, err
+		} else {
+			inst = resp.GetInstance()
+		}
+		defer func() {
+			_, _ = srv.Destroy(ctx, &rpc.DestroyRequest{Instance: inst})
+		}()
 
-	logrus.SetLevel(logrus.ErrorLevel) // Reduce the log level of arduino-cli
-	srv := commands.NewArduinoCoreServer()
-	if err := setConfig(ctx, srv); err != nil {
-		return false, err
-	}
+		if err := srv.Init(
+			&rpc.InitRequest{Instance: inst},
+			commands.InitStreamResponseToCallbackFunction(ctx, func(r *rpc.InitResponse) error {
+				slog.Debug("Arduino init instance", slog.String("instance", r.String()))
+				return nil
+			}),
+		); err != nil {
+			return false, err
+		}
 
-	var inst *rpc.Instance
-	if resp, err := srv.Create(ctx, &rpc.CreateRequest{}); err != nil {
-		return false, err
-	} else {
-		inst = resp.GetInstance()
-	}
-	defer func() {
-		_, _ = srv.Destroy(ctx, &rpc.DestroyRequest{Instance: inst})
+		platforms, err := srv.PlatformSearch(ctx, &rpc.PlatformSearchRequest{
+			Instance:          inst,
+			ManuallyInstalled: true,
+			SearchArgs:        "arduino:zephyr",
+		})
+		if err != nil {
+			return false, err
+		}
+
+		for _, p := range platforms.GetSearchOutput() {
+			if p.GetMetadata().Id == "arduino:zephyr" {
+				v, err := semver.Parse(p.GetInstalledVersion())
+				if err != nil {
+					return false, fmt.Errorf("failed to parse platform version: %w", err)
+				}
+				if v.GreaterThan(semver.MustParse("0.53.1")) {
+					return true, nil
+				}
+				return false, nil
+			}
+		}
+
+		return false, fmt.Errorf("platform arduino:zephyr not installed")
 	}()
-
-	if err := srv.Init(
-		&rpc.InitRequest{Instance: inst},
-		commands.InitStreamResponseToCallbackFunction(ctx, func(r *rpc.InitResponse) error {
-			slog.Debug("Arduino init instance", slog.String("instance", r.String()))
-			return nil
-		}),
-	); err != nil {
-		return false, err
-	}
-
-	platforms, err := srv.PlatformSearch(ctx, &rpc.PlatformSearchRequest{
-		Instance:          inst,
-		ManuallyInstalled: true,
-		SearchArgs:        "arduino:zephyr",
-	})
 	if err != nil {
-		return false, err
+		slog.Warn("failed to check if wait for app upload is supported, use flash to ram mode", "error", err)
+		return false
 	}
-
-	for _, p := range platforms.GetSearchOutput() {
-		if p.GetMetadata().Id == "arduino:zephyr" {
-			v, err := semver.Parse(p.GetInstalledVersion())
-			if err != nil {
-				return false, fmt.Errorf("failed to parse platform version: %w", err)
-			}
-			if v.LessThanOrEqual(semver.MustParse("0.53.1")) {
-				return true, nil
-			}
-			return false, nil
-		}
-	}
-
-	return false, fmt.Errorf("platform arduino:zephyr not installed")
+	return check
 }

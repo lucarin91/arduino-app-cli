@@ -1093,11 +1093,18 @@ func compileUploadSketch(
 		return err
 	}
 
+	fqbn := "arduino:zephyr:unoq"
+	hasWaitForApp := hasWaitForApp(ctx)
+	if hasWaitForApp {
+		fqbn += ":wait_linux_boot=app"
+		slog.Debug("compile and upload sketch", slog.String("fqbn", fqbn), slog.Bool("hasWaitForApp", hasWaitForApp))
+	}
+
 	// build the sketch
 	server, getCompileResult := commands.CompilerServerToStreams(ctx, w, w, nil)
 	compileReq := rpc.CompileRequest{
 		Instance:   inst,
-		Fqbn:       "arduino:zephyr:unoq:wait_linux_boot=app",
+		Fqbn:       fqbn,
 		SketchPath: sketchPath.String(),
 		BuildPath:  buildPath,
 		Jobs:       2,
@@ -1124,7 +1131,11 @@ func compileUploadSketch(
 		slog.Info("Used library " + lib.GetName() + " (" + lib.GetVersion() + ") in " + lib.GetInstallDir())
 	}
 
-	return uploadSketch(ctx, w, srv, inst, sketchPath.String(), buildPath)
+	if hasWaitForApp {
+		return uploadSketchWaitForApp(ctx, w, srv, inst, sketchPath.String(), buildPath)
+	} else {
+		return uploadSketchInRam(ctx, w, srv, inst, sketchPath.String(), buildPath)
+	}
 }
 
 type ConfigResponse struct {

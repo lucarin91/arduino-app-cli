@@ -12,7 +12,6 @@ import (
 	rpc "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/commands/v1"
 	"github.com/arduino/go-paths-helper"
 	"github.com/sirupsen/logrus"
-	semver "go.bug.st/relaxed-semver"
 
 	"github.com/arduino/arduino-app-cli/internal/platform"
 )
@@ -113,7 +112,10 @@ func configureMicroInRamMode(
 }
 
 func hasWaitForApp(ctx context.Context, platform platform.Platform) bool {
-	check, err := func() (bool, error) {
+	const waitForLinuxMenu = "wait_linux_boot"
+	const waitForAppValue = "app"
+
+	if check, err := func() (bool, error) {
 		logrus.SetLevel(logrus.ErrorLevel) // Reduce the log level of arduino-cli
 		srv := commands.NewArduinoCoreServer()
 		if _, err := srv.SettingsSetValue(ctx, &rpc.SettingsSetValueRequest{
@@ -144,33 +146,31 @@ func hasWaitForApp(ctx context.Context, platform platform.Platform) bool {
 			return false, err
 		}
 
-		platforms, err := srv.PlatformSearch(ctx, &rpc.PlatformSearchRequest{
-			Instance:          inst,
-			ManuallyInstalled: true,
-			SearchArgs:        platform.PlatformID,
+		info, err := srv.BoardDetails(ctx, &rpc.BoardDetailsRequest{
+			Instance: inst,
+			Fqbn:     platform.FQBN,
 		})
 		if err != nil {
 			return false, err
 		}
 
-		for _, p := range platforms.GetSearchOutput() {
-			if p.GetMetadata().Id == platform.PlatformID {
-				v, err := semver.Parse(p.GetInstalledVersion())
-				if err != nil {
-					return false, fmt.Errorf("failed to parse platform version: %w", err)
+		for _, config := range info.GetConfigOptions() {
+			// config option for zephyr platform defined here https://github.com/arduino/ArduinoCore-zephyr/blob/main/boards.txt#L641-L647
+			if config.GetOption() == "wait_linux_boot" {
+				for _, value := range config.GetValues() {
+					slog.Debug("found config value for wait_linux_boot", "value", value.GetValue())
+					if value.GetValue() == "app" {
+						return true, nil
+					}
 				}
-				if v.GreaterThan(semver.MustParse("0.53.1")) {
-					return true, nil
-				}
-				return false, nil
 			}
 		}
 
 		return false, fmt.Errorf("platform %q not installed", platform.PlatformID)
-	}()
-	if err != nil {
+	}(); err != nil {
 		slog.Warn("failed to check if wait for app upload is supported, use flash to ram mode", "error", err)
 		return false
+	} else {
+		return check
 	}
-	return check
 }

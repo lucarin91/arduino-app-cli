@@ -26,7 +26,8 @@ type Platform struct {
 		StatusLeds paths.PathList
 	}
 	Micro struct {
-		ResetPin GpioPin
+		ResetPin     GpioPin
+		AnimationPin GpioPin
 	}
 }
 
@@ -51,8 +52,9 @@ func GetPlatform() Platform {
 					"/sys/class/leds/red:user",
 				),
 			},
-			Micro: struct{ ResetPin GpioPin }{
-				ResetPin: GpioPin{Chip: "gpiochip1", Number: 38},
+			Micro: struct{ ResetPin, AnimationPin GpioPin }{
+				ResetPin:     GpioPin{Chip: "gpiochip1", Number: 38},
+				AnimationPin: GpioPin{Chip: "gpiochip1", Number: 70},
 			},
 		}
 	default:
@@ -64,7 +66,7 @@ func GetPlatform() Platform {
 }
 
 func (p Platform) GetMicro() micro.Micro {
-	return micro.New(micro.GpioPin(p.Micro.ResetPin))
+	return micro.New(micro.GpioPin(p.Micro.ResetPin), micro.GpioPin(p.Micro.AnimationPin))
 }
 
 func getCodeName() string {

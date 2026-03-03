@@ -29,9 +29,10 @@ type Micro struct {
 	animationPin GpioPin
 }
 
-func New(resetPin GpioPin) Micro {
+func New(resetPin GpioPin, animationPin GpioPin) Micro {
 	return Micro{
-		resetPin: resetPin,
+		resetPin:     resetPin,
+		animationPin: animationPin,
 	}
 }
 

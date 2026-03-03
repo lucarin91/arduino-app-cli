@@ -1099,7 +1099,7 @@ func compileUploadSketch(
 		return err
 	}
 
-	fqbn := "arduino:zephyr:unoq"
+	fqbn := platform.FQBN
 	hasWaitForApp := hasWaitForApp(ctx)
 	if hasWaitForApp {
 		fqbn += ":wait_linux_boot=app"

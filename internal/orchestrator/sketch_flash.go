@@ -56,7 +56,7 @@ func uploadSketchWaitForApp(ctx context.Context,
 	stream, _ := commands.UploadToServerStreams(ctx, w, w)
 	if err := srv.Upload(&rpc.UploadRequest{
 		Instance:   inst,
-		Fqbn:       "arduino:zephyr:unoq",
+		Fqbn:       platform.FQBN,
 		SketchPath: sketchPath,
 		ImportDir:  buildPath,
 	}, stream); err != nil {

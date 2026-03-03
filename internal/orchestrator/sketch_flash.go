@@ -2,7 +2,6 @@ package orchestrator
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -112,9 +111,6 @@ func configureMicroInRamMode(
 }
 
 func hasWaitForApp(ctx context.Context, platform platform.Platform) bool {
-	const waitForLinuxMenu = "wait_linux_boot"
-	const waitForAppValue = "app"
-
 	if check, err := func() (bool, error) {
 		logrus.SetLevel(logrus.ErrorLevel) // Reduce the log level of arduino-cli
 		srv := commands.NewArduinoCoreServer()
@@ -165,8 +161,7 @@ func hasWaitForApp(ctx context.Context, platform platform.Platform) bool {
 				}
 			}
 		}
-
-		return false, fmt.Errorf("platform %q not installed", platform.PlatformID)
+		return false, nil
 	}(); err != nil {
 		slog.Warn("failed to check if wait for app upload is supported, use flash to ram mode", "error", err)
 		return false

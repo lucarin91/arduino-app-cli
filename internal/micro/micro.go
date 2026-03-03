@@ -26,13 +26,13 @@ type GpioPin struct {
 
 type Micro struct {
 	resetPin     GpioPin
-	animationPin GpioPin
+	signalAppPin GpioPin
 }
 
 func New(resetPin GpioPin, animationPin GpioPin) Micro {
 	return Micro{
 		resetPin:     resetPin,
-		animationPin: animationPin,
+		signalAppPin: animationPin,
 	}
 }
 
@@ -56,5 +56,5 @@ func (m Micro) Disable() error {
 }
 
 func (m Micro) SignalAppStart() error {
-	return signalAppStart(m.animationPin.Chip, m.animationPin.Number)
+	return signalAppStart(m.signalAppPin.Chip, m.signalAppPin.Number)
 }

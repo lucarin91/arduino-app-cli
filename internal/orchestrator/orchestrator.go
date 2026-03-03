@@ -1114,7 +1114,7 @@ func compileUploadSketch(
 	server, getCompileResult := commands.CompilerServerToStreams(ctx, w, w, nil)
 	compileReq := rpc.CompileRequest{
 		Instance:   inst,
-		Fqbn:       platform.FQBN,
+		Fqbn:       fqbn,
 		SketchPath: sketchPath.String(),
 		BuildPath:  buildPath,
 		Jobs:       2,

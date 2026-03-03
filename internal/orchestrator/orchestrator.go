@@ -1104,7 +1104,7 @@ func compileUploadSketch(
 	}
 
 	fqbn := platform.FQBN
-	hasWaitForApp := hasWaitForApp(ctx)
+	hasWaitForApp := hasWaitForApp(ctx, platform)
 	if hasWaitForApp {
 		fqbn += ":wait_linux_boot=app"
 	}
@@ -1144,7 +1144,7 @@ func compileUploadSketch(
 	if hasWaitForApp {
 		return uploadSketchWaitForApp(ctx, w, srv, inst, platform, sketchPath.String(), buildPath)
 	} else {
-		return uploadSketchInRam(ctx, w, srv, inst, sketchPath.String(), buildPath)
+		return uploadSketchInRam(ctx, w, srv, inst, platform, sketchPath.String(), buildPath)
 	}
 }
 

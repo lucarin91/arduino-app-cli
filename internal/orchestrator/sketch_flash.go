@@ -21,6 +21,7 @@ func uploadSketchInRam(ctx context.Context,
 	w io.Writer,
 	srv rpc.ArduinoCoreServiceServer,
 	inst *rpc.Instance,
+	platform platform.Platform,
 	sketchPath string,
 	buildPath string,
 ) error {
@@ -28,7 +29,7 @@ func uploadSketchInRam(ctx context.Context,
 		stream, _ := commands.UploadToServerStreams(ctx, w, w)
 		if err := srv.Upload(&rpc.UploadRequest{
 			Instance:   inst,
-			Fqbn:       "arduino:zephyr:unoq:flash_mode=ram",
+			Fqbn:       platform.FQBN + ":flash_mode=ram",
 			SketchPath: sketchPath,
 			ImportDir:  buildPath,
 		}, stream); err != nil {
@@ -82,6 +83,7 @@ func configureMicroInRamMode(
 	w io.Writer,
 	srv rpc.ArduinoCoreServiceServer,
 	inst *rpc.Instance,
+	platform platform.Platform,
 ) error {
 	emptyBinDir := paths.New("/tmp/empty")
 	_ = emptyBinDir.MkdirAll()
@@ -105,12 +107,12 @@ func configureMicroInRamMode(
 	stream, _ := commands.UploadToServerStreams(ctx, w, w)
 	return srv.Upload(&rpc.UploadRequest{
 		Instance:  inst,
-		Fqbn:      "arduino:zephyr:unoq:flash_mode=flash",
+		Fqbn:      platform.FQBN + ":flash_mode=flash",
 		ImportDir: emptyBinDir.String(),
 	}, stream)
 }
 
-func hasWaitForApp(ctx context.Context) bool {
+func hasWaitForApp(ctx context.Context, platform platform.Platform) bool {
 	check, err := func() (bool, error) {
 		logrus.SetLevel(logrus.ErrorLevel) // Reduce the log level of arduino-cli
 		srv := commands.NewArduinoCoreServer()
@@ -145,14 +147,14 @@ func hasWaitForApp(ctx context.Context) bool {
 		platforms, err := srv.PlatformSearch(ctx, &rpc.PlatformSearchRequest{
 			Instance:          inst,
 			ManuallyInstalled: true,
-			SearchArgs:        "arduino:zephyr",
+			SearchArgs:        platform.PlatformID,
 		})
 		if err != nil {
 			return false, err
 		}
 
 		for _, p := range platforms.GetSearchOutput() {
-			if p.GetMetadata().Id == "arduino:zephyr" {
+			if p.GetMetadata().Id == platform.PlatformID {
 				v, err := semver.Parse(p.GetInstalledVersion())
 				if err != nil {
 					return false, fmt.Errorf("failed to parse platform version: %w", err)
@@ -164,7 +166,7 @@ func hasWaitForApp(ctx context.Context) bool {
 			}
 		}
 
-		return false, fmt.Errorf("platform arduino:zephyr not installed")
+		return false, fmt.Errorf("platform %q not installed", platform.PlatformID)
 	}()
 	if err != nil {
 		slog.Warn("failed to check if wait for app upload is supported, use flash to ram mode", "error", err)

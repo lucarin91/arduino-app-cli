@@ -20,14 +20,14 @@ package micro
 
 import "fmt"
 
-func enableOnBoard() error {
+func enableOnBoard(string, int) error {
 	return fmt.Errorf("micro is not supported on this platform")
 }
 
-func disableOnBoard() error {
+func disableOnBoard(string, int) error {
 	return fmt.Errorf("Enable is not supported on this platform")
 }
 
-func signalAppStart() error {
+func signalAppStart(string, int) error {
 	return fmt.Errorf("ActivateAfterResetAsync is not supported on this platform")
 }

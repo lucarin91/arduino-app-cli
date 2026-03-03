@@ -14,7 +14,7 @@ import (
 	"github.com/sirupsen/logrus"
 	semver "go.bug.st/relaxed-semver"
 
-	"github.com/arduino/arduino-app-cli/internal/micro"
+	"github.com/arduino/arduino-app-cli/internal/platform"
 )
 
 func uploadSketchInRam(ctx context.Context,
@@ -49,6 +49,7 @@ func uploadSketchWaitForApp(ctx context.Context,
 	w io.Writer,
 	srv rpc.ArduinoCoreServiceServer,
 	inst *rpc.Instance,
+	platform platform.Platform,
 	sketchPath string,
 	buildPath string,
 ) error {
@@ -66,7 +67,7 @@ func uploadSketchWaitForApp(ctx context.Context,
 	go func() {
 		time.Sleep(500 * time.Millisecond) // wait a bit.
 
-		if err := micro.SignalAppStart(); err != nil {
+		if err := platform.GetMicro().SignalAppStart(); err != nil {
 			slog.Warn("failed to signal app start to microcontroller", slog.String("error", err.Error()))
 		}
 	}()

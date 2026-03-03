@@ -39,7 +39,7 @@ func uploadSketchInRam(ctx context.Context,
 	}
 	if err := upload(); err != nil {
 		slog.Warn("failed to upload in ram mode, trying to configure the board in ram mode, and retry", slog.String("error", err.Error()))
-		if err := configureMicroInRamMode(ctx, w, srv, inst); err != nil {
+		if err := configureMicroInRamMode(ctx, w, srv, inst, platform); err != nil {
 			return err
 		}
 	}

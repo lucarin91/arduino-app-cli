@@ -28,6 +28,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/arduino/arduino-cli/commands"
+	rpc "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/commands/v1"
+	"github.com/arduino/go-paths-helper"
 	"github.com/compose-spec/compose-go/v2/loader"
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/cli/cli/command"
@@ -35,9 +38,11 @@ import (
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 	dockerClient "github.com/docker/docker/client"
+	"github.com/sirupsen/logrus"
 	"go.bug.st/f"
 
 	"github.com/arduino/arduino-app-cli/cmd/feedback"
+	"github.com/arduino/arduino-app-cli/internal/orchestrator/app"
 	"github.com/arduino/arduino-app-cli/internal/orchestrator/config"
 	"github.com/arduino/arduino-app-cli/internal/platform"
 	"github.com/arduino/arduino-app-cli/internal/store"
@@ -47,9 +52,46 @@ var ErrDockerOutOfSpace = errors.New("not enough disk space to pull the docker i
 
 const ExitCodeDockerOutOfSpace = 80
 
-// Pulls all the docker images needed for the current version of the software to run.
-// Can be used to pre-install docker images on an empty system, or to update all the docker images that need it.
+type initProgress struct {
+	label string
+	curr  int64
+	total int64
+}
+
+type initProgressCallback func(progress initProgress)
+
+// SystemInit pulls all the docker images needed for the current version of the software to run and the
+// sketch libraries used in the example apps. Can be used to pre-install docker images/libraries on an
+// empty system, or to update all the docker images/libraries that need it.
 func SystemInit(ctx context.Context, cfg config.Configuration, staticStore *store.StaticStore, docker *command.DockerCli) error {
+	stdout, _, err := feedback.DirectStreams()
+	if err != nil {
+		feedback.Fatal(err.Error(), feedback.ErrBadArgument)
+		return nil
+	}
+
+	// TODO: Move this callback up in the call chain, closer to Cobra command definition
+	progressCB := func(progress initProgress) {
+		percentage := float64(progress.curr) / float64(progress.total) * 100
+		fmt.Fprintf(stdout, "%s: %.2f%% (%d/%d)\r", progress.label, percentage, progress.curr, progress.total)
+		if progress.curr == progress.total {
+			fmt.Fprintln(stdout)
+		}
+	}
+
+	if err := downloadLibsAndPlatformsUsedInExamples(ctx, cfg, progressCB); err != nil {
+		return fmt.Errorf("failed to download libs and platforms used in examples: %w", err)
+	}
+
+	// TODO: use progressCB instead of stdout
+	if err := downloadContainersUsedInExamples(ctx, cfg, staticStore, docker, stdout); err != nil {
+		return fmt.Errorf("failed to download container images used in examples: %w", err)
+	}
+
+	return nil
+}
+
+func downloadContainersUsedInExamples(ctx context.Context, cfg config.Configuration, staticStore *store.StaticStore, docker *command.DockerCli, stdout io.Writer) error {
 	imagesToPreinstall := []string{cfg.PythonImage}
 	additionalImages, err := parseAllModelsRunnerImageTag(staticStore)
 	if err != nil {
@@ -66,12 +108,6 @@ func SystemInit(ctx context.Context, cfg config.Configuration, staticStore *stor
 	imagesToPreinstall = slices.DeleteFunc(imagesToPreinstall, func(v string) bool {
 		return slices.Contains(pulledImages, v)
 	})
-
-	stdout, _, err := feedback.DirectStreams()
-	if err != nil {
-		feedback.Fatal(err.Error(), feedback.ErrBadArgument)
-		return nil
-	}
 
 	for _, image := range imagesToPreinstall {
 		freeSpace, err := GetDockerFreeSpace()
@@ -347,4 +383,148 @@ func removeDanglingContainers(ctx context.Context, docker dockerClient.APIClient
 		counter++
 	}
 	return counter, nil
+}
+
+func downloadLibsAndPlatformsUsedInExamples(ctx context.Context, cfg config.Configuration, progressCB initProgressCallback) error {
+	// Start an Arduino Core Server RPC server
+	logrus.SetOutput(io.Discard) // Suppress logs from Arduino CLI
+	var cliInstance *rpc.Instance
+	cli := commands.NewArduinoCoreServer()
+
+	// Set the data dir if specified via the ARDUINO_DIRECTORIES_DATA env var
+	if dataDir, ok := os.LookupEnv("ARDUINO_DIRECTORIES_DATA"); ok {
+		_, err := cli.SettingsSetValue(ctx, &rpc.SettingsSetValueRequest{
+			Key:          "directories.data",
+			EncodedValue: dataDir,
+			ValueFormat:  "cli",
+		})
+		if err != nil {
+			return fmt.Errorf("could not set data directory: %w", err)
+		}
+	}
+
+	if resp, err := cli.Create(ctx, &rpc.CreateRequest{}); err != nil {
+		return fmt.Errorf("could not create Arduino Core Server client: %w", err)
+	} else {
+		cliInstance = resp.GetInstance()
+	}
+	defer func() {
+		// Close the server instance
+		_, _ = cli.Destroy(ctx, &rpc.DestroyRequest{Instance: cliInstance})
+	}()
+
+	// Download progress CB
+	currLabel := ""
+	totalSize := int64(0)
+	downloadProgressCB := func(curr *rpc.DownloadProgress) {
+		if start := curr.GetStart(); start != nil {
+			currLabel = start.GetLabel()
+		}
+		if update := curr.GetUpdate(); update != nil {
+			totalSize = update.GetTotalSize()
+			progressCB(initProgress{
+				label: currLabel,
+				curr:  update.GetDownloaded(),
+				total: totalSize,
+			})
+		}
+	}
+
+	// Force-update of the Arduino Libraries index
+	{
+		str, _ := commands.UpdateLibrariesIndexStreamResponseToCallbackFunction(ctx, downloadProgressCB)
+		if err := cli.UpdateLibrariesIndex(&rpc.UpdateLibrariesIndexRequest{Instance: cliInstance}, str); err != nil {
+			return fmt.Errorf("could not update libraries index: %w", err)
+		}
+	}
+
+	// Force-update of the Arduino Platforms index
+	{
+		str, _ := commands.UpdateIndexStreamResponseToCallbackFunction(ctx, downloadProgressCB)
+		if err := cli.UpdateIndex(&rpc.UpdateIndexRequest{Instance: cliInstance}, str); err != nil {
+			return fmt.Errorf("could not update platforms index: %w", err)
+		}
+	}
+
+	// Install zephyr platform
+	{
+		if err := cli.Init(&rpc.InitRequest{Instance: cliInstance}, commands.InitStreamResponseToCallbackFunction(ctx, func(r *rpc.InitResponse) error {
+			if p := r.GetInitProgress().GetDownloadProgress(); p != nil {
+				downloadProgressCB(p)
+			}
+			return nil
+		})); err != nil {
+			return fmt.Errorf("could not initialize Arduino Core Server: %w", err)
+		}
+
+		str := commands.PlatformInstallStreamResponseToCallbackFunction(ctx, downloadProgressCB, func(msg *rpc.TaskProgress) {})
+		if err := cli.PlatformInstall(&rpc.PlatformInstallRequest{
+			Instance:        cliInstance,
+			PlatformPackage: "arduino",
+			Architecture:    "zephyr",
+		}, str); err != nil {
+			return fmt.Errorf("could not install zephyr platform: %w", err)
+		}
+	}
+
+	// Get a list of example apps
+	exampleAppsPath, err := app.FindAppsInFolder(cfg.ExamplesDir())
+	if err != nil {
+		return err
+	}
+
+	// After downloading the libs, clean up the download cache
+	defer func() {
+		_, _ = cli.CleanDownloadCacheDirectory(ctx, &rpc.CleanDownloadCacheDirectoryRequest{Instance: cliInstance})
+	}()
+
+	// Download libraries used in each example app
+	for _, appPath := range exampleAppsPath {
+		if err := downloadSketchLibsUsedInApp(ctx, appPath, cli, cliInstance, downloadProgressCB); err != nil {
+			return fmt.Errorf("could not download libs in app %s: %w", appPath, err)
+		}
+	}
+
+	return nil
+}
+
+func downloadSketchLibsUsedInApp(ctx context.Context, appPath *paths.Path, cli rpc.ArduinoCoreServiceServer, cliInstance *rpc.Instance, downloadProgressCB func(*rpc.DownloadProgress)) error {
+	// Open the app to get the sketch path
+	app, err := app.Load(appPath)
+	if err != nil {
+		return err
+	}
+	sketchPath, ok := app.GetSketchPath()
+	if !ok {
+		return nil
+	}
+
+	// Detect the sketch default defaultProfile
+	defaultProfile := "default"
+	sk, err := cli.LoadSketch(ctx, &rpc.LoadSketchRequest{SketchPath: sketchPath.String()})
+	if err != nil {
+		return fmt.Errorf("could not load sketch: %w", err)
+	}
+	if name := sk.GetSketch().GetDefaultProfile().GetName(); name != "" {
+		defaultProfile = name
+	}
+
+	// Initializing using the profile will force download and install of the missing libraries
+	if err := cli.Init(
+		&rpc.InitRequest{
+			Instance:   cliInstance,
+			SketchPath: sketchPath.String(),
+			Profile:    defaultProfile,
+		},
+		commands.InitStreamResponseToCallbackFunction(ctx, func(r *rpc.InitResponse) error {
+			if p := r.GetInitProgress().GetDownloadProgress(); p != nil {
+				downloadProgressCB(p)
+			}
+			return nil
+		}),
+	); err != nil {
+		return fmt.Errorf("could not initialize sketch %s: %w", sketchPath.String(), err)
+	}
+
+	return nil
 }

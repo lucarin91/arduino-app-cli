@@ -1048,19 +1048,13 @@ func compileUploadSketch(
 	} else {
 		inst = resp.GetInstance()
 	}
-
 	defer func() {
 		_, _ = srv.Destroy(ctx, &rpc.DestroyRequest{Instance: inst})
 	}()
+
 	sketchPath, ok := arduinoApp.GetSketchPath()
 	if !ok {
 		return fmt.Errorf("no sketch path found in the Arduino app")
-	}
-	buildPath := arduinoApp.SketchBuildPath()
-	if buildPath.NotExist() {
-		if err := buildPath.MkdirAll(); err != nil {
-			return fmt.Errorf("failed to create build directory: %w", err)
-		}
 	}
 	sketchResp, err := srv.LoadSketch(ctx, &rpc.LoadSketchRequest{SketchPath: sketchPath.String()})
 	if err != nil {
@@ -1109,6 +1103,12 @@ func compileUploadSketch(
 	}
 
 	// build the sketch
+	buildPath := arduinoApp.SketchBuildPath()
+	if buildPath.NotExist() {
+		if err := buildPath.MkdirAll(); err != nil {
+			return fmt.Errorf("failed to create build directory: %w", err)
+		}
+	}
 	server, getCompileResult := commands.CompilerServerToStreams(ctx, w, w, nil)
 	compileReq := rpc.CompileRequest{
 		Instance:   inst,

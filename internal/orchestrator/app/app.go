@@ -83,11 +83,6 @@ func Load(appPath *paths.Path) (ArduinoApp, error) {
 		return ArduinoApp{}, errors.New("main python file and sketch file missing from app")
 	}
 
-	// Ensure the .cache folder is created
-	if err := app.ProvisioningStateDir().MkdirAll(); err != nil {
-		return ArduinoApp{}, errors.New("cannot create .cache directory for app provisioning state")
-	}
-
 	return app, nil
 }
 

@@ -16,15 +16,22 @@
 package app
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
+	"regexp"
+	"strings"
 
 	"github.com/arduino/go-paths-helper"
 	yaml "github.com/goccy/go-yaml"
 
 	"github.com/arduino/arduino-app-cli/internal/fatomic"
 )
+
+const maxDescriptionLength = 150
 
 // ArduinoApp holds all the files composing an app
 type ArduinoApp struct {
@@ -66,6 +73,17 @@ func Load(appPath *paths.Path) (ArduinoApp, error) {
 		}
 		app.Descriptor = desc
 		app.Name = desc.Name
+
+		if app.Descriptor.Description == "" {
+			description, err := app.getAppDescriptionFromReadme()
+			if err != nil {
+				// Log the error but don't fail the loading process, as the description is optional
+				slog.Warn("cannot extract app description from README.md", "error", err)
+			} else {
+				app.Descriptor.Description = description
+			}
+		}
+
 	} else {
 		return ArduinoApp{}, errors.New("descriptor app.yaml file missing from app")
 	}
@@ -148,4 +166,99 @@ func (a *ArduinoApp) AppComposeFilePath() *paths.Path {
 
 func (a *ArduinoApp) AppComposeOverrideFilePath() *paths.Path {
 	return a.ProvisioningStateDir().Join("app-compose-overrides.yaml")
+}
+
+func (a *ArduinoApp) getAppDescriptionFromReadme() (string, error) {
+	readmePath := a.FullPath.Join("README.md")
+	if !readmePath.Exist() {
+		return "", fmt.Errorf("README.md not found in app directory")
+	}
+
+	f, err := readmePath.Open()
+	if err != nil {
+		return "", fmt.Errorf("error reading README.md: %w", err)
+	}
+	defer f.Close()
+	description := extractFirstParagraph(f)
+	return truncateDescription(description, maxDescriptionLength), nil
+}
+
+func extractFirstParagraph(source io.Reader) string {
+	scanner := bufio.NewScanner(source)
+	var lines []string
+	inFence := false
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if reFence.MatchString(line) {
+			inFence = !inFence
+			continue
+		}
+		if inFence {
+			continue
+		}
+
+		if reSpaces.MatchString(line) ||
+			reHeader.MatchString(line) ||
+			reSetext.MatchString(line) ||
+			reList.MatchString(line) ||
+			reQuote.MatchString(line) ||
+			reIndent.MatchString(line) {
+			if len(lines) > 0 {
+				break
+			}
+			continue
+		}
+
+		clean := cleanInlineMarkdown(line)
+		if clean == "" {
+			continue
+		}
+
+		lines = append(lines, clean)
+	}
+
+	return strings.Join(lines, " ")
+}
+
+var (
+	// Block-level regex
+	reHeader = regexp.MustCompile(`^#{1,6}\s+`)           // Matches ATX-style headings (lines starting with 1-6 # characters)
+	reSetext = regexp.MustCompile(`^\s*(=+|-+)\s*$`)      // Matches Setext-style headings (underlines with === or ---)
+	reList   = regexp.MustCompile(`^\s*([-*+]|\d+\.)\s+`) // Matches unordered (-, *, +) or ordered (1., 2., etc.) list items
+	reQuote  = regexp.MustCompile(`^>\s+`)                // Matches blockquotes starting with >
+	reFence  = regexp.MustCompile("^```")                 // Matches fenced code block start/end (```)
+	reIndent = regexp.MustCompile(`^\s{4,}`)              // Matches indented code blocks (4+ spaces)
+
+	// Inline-level regex
+	reBold        = regexp.MustCompile(`\*\*(.*?)\*\*`)               // Matches bold text (**text**)
+	reItalic      = regexp.MustCompile(`\*(.*?)\*`)                   // Matches italic text (*text*)
+	reCode        = regexp.MustCompile("`([^`]*)`")                   // Matches inline code (`code`)
+	reLink        = regexp.MustCompile(`\[(.*?)\]\(.*?\)`)            // Matches links [text](url), keeps only the text
+	reLinkedImage = regexp.MustCompile(`\[\!\[.*?\]\(.*?\)\]\(.*?\)`) // Matches linked images [![alt](img)](url)
+	reImage       = regexp.MustCompile(`!\[.*?\]\(.*?\)`)             // Matches images ![alt](img)
+	reMultiSpace  = regexp.MustCompile(`\s+`)                         // Matches multiple spaces/newlines to normalize
+	reSpaces      = regexp.MustCompile(`^\s*$`)
+)
+
+func cleanInlineMarkdown(s string) string {
+	s = reLinkedImage.ReplaceAllString(s, "")
+	s = reImage.ReplaceAllString(s, "")
+	s = reLink.ReplaceAllString(s, "$1")
+	s = reBold.ReplaceAllString(s, "$1")
+	s = reItalic.ReplaceAllString(s, "$1")
+	s = reCode.ReplaceAllString(s, "$1")
+	s = reMultiSpace.ReplaceAllString(s, " ")
+	return strings.TrimSpace(s)
+}
+
+func truncateDescription(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	s = s[:max]
+	if i := strings.LastIndex(s, " "); i > 0 {
+		return s[:i]
+	}
+	return s
 }

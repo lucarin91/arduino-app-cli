@@ -75,6 +75,7 @@ func adbWriteFile(a *ADBConnection, r io.Reader, pathStr string) error {
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start command for write file %q: %w", pathStr, err)
 	}
+	// Close cmd regardless of errors happening downstream
 	defer func() { _ = cmd.Wait() }()
 
 	if _, err := io.Copy(stdin, r); err != nil {

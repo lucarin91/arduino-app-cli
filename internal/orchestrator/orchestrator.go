@@ -1048,15 +1048,14 @@ func compileUploadSketch(
 	} else {
 		inst = resp.GetInstance()
 	}
-
 	defer func() {
 		_, _ = srv.Destroy(ctx, &rpc.DestroyRequest{Instance: inst})
 	}()
+
 	sketchPath, ok := arduinoApp.GetSketchPath()
 	if !ok {
 		return fmt.Errorf("no sketch path found in the Arduino app")
 	}
-	buildPath := arduinoApp.SketchBuildPath().String()
 	sketchResp, err := srv.LoadSketch(ctx, &rpc.LoadSketchRequest{SketchPath: sketchPath.String()})
 	if err != nil {
 		return err
@@ -1111,12 +1110,18 @@ func compileUploadSketch(
 	slog.Debug("compile and upload sketch", slog.String("fqbn", fqbn), slog.Bool("hasWaitForApp", hasWaitForApp))
 
 	// build the sketch
+	buildPath := arduinoApp.SketchBuildPath()
+	if buildPath.NotExist() {
+		if err := buildPath.MkdirAll(); err != nil {
+			return fmt.Errorf("failed to create build directory: %w", err)
+		}
+	}
 	server, getCompileResult := commands.CompilerServerToStreams(ctx, w, w, nil)
 	compileReq := rpc.CompileRequest{
 		Instance:   inst,
 		Fqbn:       fqbn,
 		SketchPath: sketchPath.String(),
-		BuildPath:  buildPath,
+		BuildPath:  buildPath.String(),
 		Jobs:       2,
 	}
 
@@ -1142,9 +1147,9 @@ func compileUploadSketch(
 	}
 
 	if hasWaitForApp {
-		return uploadSketchWaitForApp(ctx, w, srv, inst, platform, sketchPath.String(), buildPath)
+		return uploadSketchWaitForApp(ctx, w, srv, inst, platform, sketchPath.String(), buildPath.String())
 	} else {
-		return uploadSketchInRam(ctx, w, srv, inst, platform, sketchPath.String(), buildPath)
+		return uploadSketchInRam(ctx, w, srv, inst, platform, sketchPath.String(), buildPath.String())
 	}
 }
 

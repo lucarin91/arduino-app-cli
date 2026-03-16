@@ -396,8 +396,10 @@ func removeDanglingContainers(ctx context.Context, docker dockerClient.APIClient
 }
 
 func removeDanglingNetworks(ctx context.Context, docker dockerClient.APIClient) (int, error) {
+	const dockerComposeProjectLabel = "com.docker.compose.project"
+
 	networks, err := docker.NetworkList(ctx, network.ListOptions{
-		Filters: filters.NewArgs(filters.Arg("label", DockerAppLabel+"=true")),
+		Filters: filters.NewArgs(filters.Arg("label", dockerComposeProjectLabel)),
 	})
 	if err != nil {
 		return 0, fmt.Errorf("failed to list networks: %w", err)
@@ -405,6 +407,9 @@ func removeDanglingNetworks(ctx context.Context, docker dockerClient.APIClient) 
 
 	var counter int
 	for _, info := range networks {
+		if !strings.Contains(info.Labels[dockerComposeProjectLabel], "arduino-app-cli") {
+			continue
+		}
 		if err := docker.NetworkRemove(ctx, info.ID); err != nil {
 			return 0, fmt.Errorf("failed to remove network %s: %w", info.ID, err)
 		}

@@ -172,6 +172,7 @@ func newCleanUpCmd(cfg config.Configuration, docker command.Cli) *cobra.Command 
 			}
 			feedback.Printf("  - %d containers", result.ContainersRemoved)
 			feedback.Printf("  - %d images (%v)", result.ImagesRemoved, helpers.ToHumanMiB(result.SpaceFreed))
+			feedback.Printf("  - %d newtworks", result.NetworksRemoved)
 			return nil
 		},
 	}

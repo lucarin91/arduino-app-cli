@@ -74,9 +74,8 @@ func buildAppPortResponse(appPorts []int, brickInfoMap map[string]BrickPortInfo)
 
 	for _, p := range appPorts {
 		response.Ports = append(response.Ports, port{
-			Port:        strconv.Itoa(p),
-			Source:      "app.yaml",
-			ServiceName: "webview",
+			Port:   strconv.Itoa(p),
+			Source: "app.yaml",
 		})
 	}
 

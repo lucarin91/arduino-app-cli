@@ -37,6 +37,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/api/types/network"
 	dockerClient "github.com/docker/docker/client"
 	"github.com/sirupsen/logrus"
 	"go.bug.st/f"
@@ -272,6 +273,7 @@ func parseAllModelsRunnerImageTag(staticStore *store.StaticStore) ([]string, err
 
 type SystemCleanupResult struct {
 	ContainersRemoved int
+	NetworksRemoved   int
 	ImagesRemoved     int
 	RunningAppRemoved bool
 	SpaceFreed        int64 // in bytes
@@ -286,7 +288,7 @@ func (s SystemCleanupResult) IsEmpty() bool {
 func SystemCleanup(ctx context.Context, cfg config.Configuration, staticStore *store.StaticStore, docker command.Cli, platform platform.Platform) (SystemCleanupResult, error) {
 	var result SystemCleanupResult
 
-	// Remove running app and dangling containers
+	// Remove running app
 	runningApp, err := getRunningApp(ctx, docker.Client())
 	if err != nil {
 		feedback.Warnf("failed to get running app - %v", err)
@@ -300,10 +302,17 @@ func SystemCleanup(ctx context.Context, cfg config.Configuration, staticStore *s
 		}
 		result.RunningAppRemoved = true
 	}
+
+	// Remove dangling stuff
 	if count, err := removeDanglingContainers(ctx, docker.Client()); err != nil {
 		feedback.Warnf("failed to remove dangling containers - %v", err)
 	} else {
 		result.ContainersRemoved = count
+	}
+	if count, err := removeDanglingNetworks(ctx, docker.Client()); err != nil {
+		feedback.Warnf("failed to remove dangling networks - %v", err)
+	} else {
+		result.NetworksRemoved = count
 	}
 
 	// Remove unused images
@@ -382,6 +391,31 @@ func removeDanglingContainers(ctx context.Context, docker dockerClient.APIClient
 		}
 		counter++
 	}
+
+	return counter, nil
+}
+
+func removeDanglingNetworks(ctx context.Context, docker dockerClient.APIClient) (int, error) {
+	const dockerComposeProjectLabel = "com.docker.compose.project"
+
+	networks, err := docker.NetworkList(ctx, network.ListOptions{
+		Filters: filters.NewArgs(filters.Arg("label", dockerComposeProjectLabel)),
+	})
+	if err != nil {
+		return 0, fmt.Errorf("failed to list networks: %w", err)
+	}
+
+	var counter int
+	for _, info := range networks {
+		if !strings.Contains(info.Labels[dockerComposeProjectLabel], "arduino-app-cli") {
+			continue
+		}
+		if err := docker.NetworkRemove(ctx, info.ID); err != nil {
+			return 0, fmt.Errorf("failed to remove network %s: %w", info.ID, err)
+		}
+		counter++
+	}
+
 	return counter, nil
 }
 

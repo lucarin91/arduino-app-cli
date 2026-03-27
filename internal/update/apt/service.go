@@ -186,7 +186,8 @@ func runUpgradeCommand(ctx context.Context, names []string) iter.Seq2[string, er
 		"-o", "Acquire::http::Timeout=30",
 		"-o", "Acquire::https::Timeout=30",
 	}
-	args := []string{"sudo", "apt-get", "install", "--only-upgrade", "-y"}
+	args := make([]string, 0, 5+len(aptOptions)+len(names))
+	args = append(args, "sudo", "apt-get", "install", "--only-upgrade", "-y")
 	args = append(args, aptOptions...)
 	args = append(args, names...)
 

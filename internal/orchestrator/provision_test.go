@@ -577,13 +577,11 @@ services:
 		// Extract services from the compose file to prepare override generation
 		svcInfo, err := extractServicesFromComposeFile(serviceComposeFilePath)
 		require.NoError(t, err)
-		devices := []string{}
-		devices = append(devices, "/dev/ttyUSB0:/dev/ttyUSB0")
+		devices := []string{"/dev/ttyUSB0:/dev/ttyUSB0"}
 
 		user := "1000:1000"
 
-		groups := []uint32{}
-		groups = append(groups, 20) // dialout group ID
+		groups := []uint32{20} // dialout group ID
 
 		// Generate overrides file
 		overrideComposeFile := paths.New(tempDirectory).Join(".cache").Join("app-compose-overrides.yaml")

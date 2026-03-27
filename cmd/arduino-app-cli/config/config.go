@@ -60,9 +60,9 @@ type configResult struct {
 func (r configResult) String() string {
 	var b strings.Builder
 
-	b.WriteString(fmt.Sprintf("Data Directory:     %s\n", r.Config.Directories.Data))
-	b.WriteString(fmt.Sprintf("Apps Directory:     %s\n", r.Config.Directories.Apps))
-	b.WriteString(fmt.Sprintf("Examples Directory: %s\n", r.Config.Directories.Examples))
+	fmt.Fprintf(&b, "Data Directory:     %s\n", r.Config.Directories.Data)
+	fmt.Fprintf(&b, "Apps Directory:     %s\n", r.Config.Directories.Apps)
+	fmt.Fprintf(&b, "Examples Directory: %s\n", r.Config.Directories.Examples)
 
 	return b.String()
 }

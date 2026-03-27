@@ -117,7 +117,7 @@ func zipAppToBuffer(bricksIndex *bricksindex.BricksIndex, sourcePath string, roo
 			err = yaml.NewEncoder(writer).Encode(desc)
 			return err
 		} else {
-			file, err := os.Open(path)
+			file, err := os.Open(path) // nolint:gosec
 			if err != nil {
 				return err
 			}

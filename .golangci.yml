@@ -37,6 +37,10 @@ linters:
         - "windows"
         - "linux"
         - "darwin"
+    gosec:
+      excludes:
+        - G706 # Log injection via taint analysis
+        - G703 # Path traversal via taint analysis
 
   exclusions:
     generated: lax

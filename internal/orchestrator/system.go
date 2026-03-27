@@ -392,14 +392,15 @@ func removeImage(ctx context.Context, docker dockerClient.APIClient, imageName s
 
 // imgages required by the system
 func getRequiredImages(cfg config.Configuration, staticStore *store.StaticStore) ([]string, error) {
-	requiredImages := []string{cfg.PythonImage}
-
 	modelsRunnersContainers, err := parseAllModelsRunnerImageTag(staticStore)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse models runner images: %w", err)
 	}
 
+	requiredImages := make([]string, 0, 1+len(modelsRunnersContainers))
+	requiredImages = append(requiredImages, cfg.PythonImage)
 	requiredImages = append(requiredImages, modelsRunnersContainers...)
+
 	return requiredImages, nil
 }
 

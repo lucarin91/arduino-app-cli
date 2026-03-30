@@ -1,6 +1,6 @@
 module github.com/arduino/arduino-app-cli
 
-go 1.25.1
+go 1.26.1
 
 // This is needed because compose introduce a regression in https://github.com/docker/compose/pull/13062
 // They changed the wait monitor ends. Because we're using the Logs() method, we are no longer able to make it
@@ -263,7 +263,7 @@ require (
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/mxk/go-flowrate v0.0.0-20140419014527-cca7078d478f // indirect
-	github.com/oapi-codegen/oapi-codegen/v2 v2.5.1 // indirect
+	github.com/oapi-codegen/oapi-codegen/v2 v2.6.0 // indirect
 	github.com/oasdiff/yaml v0.0.0-20250309154309-f31be36b4037 // indirect
 	github.com/oasdiff/yaml3 v0.0.0-20250309153720-d2182401db90 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect

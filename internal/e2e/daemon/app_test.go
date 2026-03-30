@@ -1043,7 +1043,7 @@ func TestExportApp(t *testing.T) {
 		zipReader, err := zip.NewReader(bytes.NewReader(bodyBytes), int64(len(bodyBytes)))
 		require.NoError(t, err, "Response body is not a valid zip archive")
 
-		var files []string
+		files := make([]string, 0, len(zipReader.File))
 		for _, f := range zipReader.File {
 			files = append(files, f.Name)
 		}

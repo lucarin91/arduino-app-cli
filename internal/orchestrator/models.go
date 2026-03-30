@@ -198,11 +198,11 @@ func buildModelInUseMessage(references []string, runningAppRef *app.ArduinoApp) 
 	var sb strings.Builder
 
 	if len(references) > 0 {
-		sb.WriteString(fmt.Sprintf("The model is referenced by the following apps: %q.", strings.Join(references, ", ")))
+		fmt.Fprintf(&sb, "The model is referenced by the following apps: %q.", strings.Join(references, ", "))
 	}
 
 	if runningAppRef != nil {
-		sb.WriteString(fmt.Sprintf("The model is in use by the app: %q.", runningAppRef.Name))
+		fmt.Fprintf(&sb, "The model is in use by the app: %q.", runningAppRef.Name)
 	}
 
 	return sb.String()

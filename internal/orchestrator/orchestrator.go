@@ -1115,7 +1115,7 @@ func compileUploadSketch(
 		Fqbn:       platform.FQBN,
 		SketchPath: sketchPath.String(),
 		BuildPath:  buildPath.String(),
-		Jobs:       2,
+		Jobs:       platform.CompileJobs,
 	}
 
 	err = srv.Compile(&compileReq, server)
@@ -1139,14 +1139,24 @@ func compileUploadSketch(
 		slog.Info("Used library " + lib.GetName() + " (" + lib.GetVersion() + ") in " + lib.GetInstallDir())
 	}
 
-	if err := uploadSketchInRam(ctx, w, srv, inst, platform, sketchPath.String(), buildPath.String()); err != nil {
-		slog.Warn("failed to upload in ram mode, trying to configure the board in ram mode, and retry", slog.String("error", err.Error()))
-		if err := configureMicroInRamMode(ctx, w, srv, inst, platform); err != nil {
-			return err
+	if platform.SupportFlashToRam() {
+		if err := uploadSketchInRam(ctx, w, srv, inst, platform, sketchPath.String(), buildPath.String()); err != nil {
+			slog.Warn("failed to upload in ram mode, trying to configure the board in ram mode, and retry", slog.String("error", err.Error()))
+			if err := configureMicroInRamMode(ctx, w, srv, inst, platform); err != nil {
+				return err
+			}
+			return uploadSketchInRam(ctx, w, srv, inst, platform, sketchPath.String(), buildPath.String())
 		}
-		return uploadSketchInRam(ctx, w, srv, inst, platform, sketchPath.String(), buildPath.String())
+		return nil
 	}
-	return nil
+
+	stream, _ := commands.UploadToServerStreams(ctx, w, w)
+	return srv.Upload(&rpc.UploadRequest{
+		Instance:   inst,
+		Fqbn:       platform.FQBN,
+		SketchPath: sketchPath.String(),
+		ImportDir:  buildPath.String(),
+	}, stream)
 }
 
 func uploadSketchInRam(ctx context.Context,

@@ -15,9 +15,10 @@ type GpioPin struct {
 }
 
 type Platform struct {
-	FQBN       string
-	PlatformID string
-	Linux      struct {
+	FQBN        string
+	PlatformID  string
+	CompileJobs int32
+	Linux       struct {
 		UserLeds   paths.PathList
 		StatusLeds paths.PathList
 	}
@@ -46,8 +47,23 @@ func GetPlatform() Platform {
 					"/sys/class/leds/red:user",
 				),
 			},
+			CompileJobs: 2,
 			Micro: struct{ ResetPin GpioPin }{
 				ResetPin: GpioPin{Chip: "gpiochip1", Number: 38},
+			},
+		}
+	case compatible.IsCompatibleWith("arduino,monza"):
+		return Platform{
+			FQBN:       "arduino:zephyr:ventunoq",
+			PlatformID: "arduino:zephyr",
+			Linux: struct{ UserLeds, StatusLeds paths.PathList }{
+				// TODO: add leds paths
+				StatusLeds: paths.NewPathList(),
+				UserLeds:   paths.NewPathList(),
+			},
+			CompileJobs: 0, // unlimited
+			Micro: struct{ ResetPin GpioPin }{
+				ResetPin: GpioPin{Chip: "gpiochip2", Number: 78},
 			},
 		}
 	default:
@@ -58,4 +74,8 @@ func GetPlatform() Platform {
 
 func (p Platform) GetMicro() micro.Micro {
 	return micro.New(micro.GpioPin(p.Micro.ResetPin))
+}
+
+func (p Platform) SupportFlashToRam() bool {
+	return p.FQBN == "arduino:zephyr:unoq"
 }

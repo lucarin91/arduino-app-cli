@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"slices"
 
 	"github.com/arduino/arduino-cli/commands"
 	rpc "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/commands/v1"
@@ -79,62 +80,68 @@ func configureMicroInRamMode(
 	}, stream)
 }
 
-func hasWaitForApp(ctx context.Context, platform platform.Platform) bool {
-	if check, err := func() (bool, error) {
-		logrus.SetLevel(logrus.ErrorLevel) // Reduce the log level of arduino-cli
-		srv := commands.NewArduinoCoreServer()
-		if _, err := srv.SettingsSetValue(ctx, &rpc.SettingsSetValueRequest{
-			Key:          "network.connection_timeout",
-			EncodedValue: "600s",
-			ValueFormat:  "cli",
-		}); err != nil {
-			return false, err
-		}
+type MenuOptions []MenuOption
 
-		var inst *rpc.Instance
-		if resp, err := srv.Create(ctx, &rpc.CreateRequest{}); err != nil {
-			return false, err
-		} else {
-			inst = resp.GetInstance()
-		}
-		defer func() {
-			_, _ = srv.Destroy(ctx, &rpc.DestroyRequest{Instance: inst})
-		}()
+type MenuOption struct {
+	name   string
+	values []string
+}
 
-		if err := srv.Init(
-			&rpc.InitRequest{Instance: inst},
-			commands.InitStreamResponseToCallbackFunction(ctx, func(r *rpc.InitResponse) error {
-				slog.Debug("Arduino init instance", slog.String("instance", r.String()))
-				return nil
-			}),
-		); err != nil {
-			return false, err
+func (o MenuOptions) Has(name, value string) bool {
+	return slices.ContainsFunc(o, func(option MenuOption) bool {
+		if option.name == name {
+			return slices.Contains(option.values, value)
 		}
-
-		info, err := srv.BoardDetails(ctx, &rpc.BoardDetailsRequest{
-			Instance: inst,
-			Fqbn:     platform.FQBN,
-		})
-		if err != nil {
-			return false, err
-		}
-
-		for _, config := range info.GetConfigOptions() {
-			// config option for zephyr platform defined here https://github.com/arduino/ArduinoCore-zephyr/blob/main/boards.txt#L641-L647
-			if config.GetOption() == "wait_linux_boot" {
-				for _, value := range config.GetValues() {
-					slog.Debug("found config value for wait_linux_boot", "value", value.GetValue())
-					if value.GetValue() == "app" {
-						return true, nil
-					}
-				}
-			}
-		}
-		return false, nil
-	}(); err != nil {
-		slog.Warn("failed to check if wait for app upload is supported, use flash to ram mode", "error", err)
 		return false
-	} else {
-		return check
+	})
+}
+
+func GetPlatformMenuOptions(ctx context.Context, platform platform.Platform) (MenuOptions, error) {
+	logrus.SetLevel(logrus.ErrorLevel) // Reduce the log level of arduino-cli
+	srv := commands.NewArduinoCoreServer()
+	if _, err := srv.SettingsSetValue(ctx, &rpc.SettingsSetValueRequest{
+		Key:          "network.connection_timeout",
+		EncodedValue: "600s",
+		ValueFormat:  "cli",
+	}); err != nil {
+		return MenuOptions{}, err
 	}
+
+	var inst *rpc.Instance
+	if resp, err := srv.Create(ctx, &rpc.CreateRequest{}); err != nil {
+		return MenuOptions{}, err
+	} else {
+		inst = resp.GetInstance()
+	}
+	defer func() {
+		_, _ = srv.Destroy(ctx, &rpc.DestroyRequest{Instance: inst})
+	}()
+
+	if err := srv.Init(
+		&rpc.InitRequest{Instance: inst},
+		commands.InitStreamResponseToCallbackFunction(ctx, func(r *rpc.InitResponse) error {
+			slog.Debug("Arduino init instance", slog.String("instance", r.String()))
+			return nil
+		}),
+	); err != nil {
+		return MenuOptions{}, err
+	}
+
+	info, err := srv.BoardDetails(ctx, &rpc.BoardDetailsRequest{
+		Instance: inst,
+		Fqbn:     platform.FQBN,
+	})
+	if err != nil {
+		return MenuOptions{}, err
+	}
+
+	var options MenuOptions
+	for _, config := range info.GetConfigOptions() {
+		option := MenuOption{name: config.GetOption()}
+		for _, value := range config.GetValues() {
+			option.values = append(option.values, value.GetValue())
+		}
+		options = append(options, option)
+	}
+	return options, nil
 }

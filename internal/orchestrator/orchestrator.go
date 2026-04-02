@@ -1104,12 +1104,17 @@ func compileUploadSketch(
 		return err
 	}
 
+	menuOptions, err := GetPlatformMenuOptions(ctx, platform)
+	if err != nil {
+		slog.Warn("failed to get platform menu options", slog.String("error", err.Error()))
+	}
+
 	fqbn := platform.FQBN
-	hasWaitForApp := hasWaitForApp(ctx, platform)
-	if hasWaitForApp {
+	if menuOptions.Has("wait_linux_boot", "app") {
 		fqbn += ":wait_linux_boot=app"
 	}
-	slog.Debug("compile and upload sketch", slog.String("fqbn", fqbn), slog.Bool("hasWaitForApp", hasWaitForApp))
+
+	slog.Debug("compile and upload sketch", slog.String("fqbn", fqbn), slog.Any("menuOptions", menuOptions))
 
 	// build the sketch
 	buildPath := arduinoApp.SketchBuildPath()
@@ -1148,7 +1153,8 @@ func compileUploadSketch(
 		slog.Info("Used library " + lib.GetName() + " (" + lib.GetVersion() + ") in " + lib.GetInstallDir())
 	}
 
-	if !hasWaitForApp && platform.SupportFlashToRam() {
+	// Support the legacy ram upload option if there isn't the new wait_linux_boot option.
+	if !menuOptions.Has("wait_linux_boot", "app") && menuOptions.Has("flash_mode", "ram") {
 		if err := uploadSketchInRam(ctx, w, srv, inst, platform, sketchPath.String(), buildPath.String()); err != nil {
 			slog.Warn("failed to upload in ram mode, trying to configure the board in ram mode, and retry", slog.String("error", err.Error()))
 			if err := configureMicroInRamMode(ctx, w, srv, inst, platform); err != nil {

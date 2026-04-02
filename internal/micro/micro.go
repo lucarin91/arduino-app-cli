@@ -31,7 +31,9 @@ type Micro struct {
 }
 
 func New(resetPin GpioPin) Micro {
-	return Micro{resetPin: resetPin}
+	return Micro{
+		resetPin: resetPin,
+	}
 }
 
 func (m Micro) Reset() error {

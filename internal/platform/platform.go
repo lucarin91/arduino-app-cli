@@ -64,10 +64,10 @@ func GetPlatform() Platform {
 					"/sys/class/leds/red:user",
 				),
 			},
+			CompileJobs: 2,
 			Micro: struct{ ResetPin GpioPin }{
 				ResetPin: GpioPin{Chip: "gpiochip1", Number: 38},
 			},
-			CompileJobs: 2,
 		}
 	case compatible.IsCompatibleWith("arduino,monza"):
 		return Platform{

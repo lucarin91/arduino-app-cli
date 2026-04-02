@@ -21,6 +21,9 @@ if ! getent passwd "$USER_ID" >/dev/null 2>&1; then
 fi
 
 username="$(getent passwd $USER_ID | cut -d: -f1)"
+
+usermod -aG "$GROUP_NAME" "$username"
+
 for GROUP in $OTHER_GROUPS; do
     if ! getent group "$GROUP" >/dev/null 2>&1; then
         groupadd --system "$GROUP"

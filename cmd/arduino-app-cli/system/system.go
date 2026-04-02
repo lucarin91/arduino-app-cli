@@ -1,17 +1,19 @@
 // This file is part of arduino-app-cli.
 //
-// Copyright 2025 ARDUINO SA (http://www.arduino.cc/)
+// Copyright (C) Arduino s.r.l. and/or its affiliated companies
 //
-// This software is released under the GNU General Public License version 3,
-// which covers the main part of arduino-app-cli.
-// The terms of this license can be found at:
-// https://www.gnu.org/licenses/gpl-3.0.en.html
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
-// You can be released from the requirements of the above licenses by purchasing
-// a commercial license. Buying such a license is mandatory if you want to
-// modify or otherwise use the software for commercial activities involving the
-// Arduino software without disclosing the source code of your own applications.
-// To purchase a commercial license, send an email to license@arduino.cc.
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 package system
 
@@ -23,6 +25,7 @@ import (
 	"github.com/docker/cli/cli/command"
 	"github.com/spf13/cobra"
 
+	"github.com/arduino/arduino-app-cli/cmd/arduino-app-cli/internal/cmdutil"
 	"github.com/arduino/arduino-app-cli/cmd/arduino-app-cli/internal/servicelocator"
 	"github.com/arduino/arduino-app-cli/cmd/feedback"
 	"github.com/arduino/arduino-app-cli/internal/helpers"
@@ -52,14 +55,22 @@ func NewSystemCmd(cfg config.Configuration) *cobra.Command {
 }
 
 func newDownloadImageCmd(cfg config.Configuration) *cobra.Command {
+	var onlyImages bool
+	var onlyPlatformAndLibraries bool
 	cmd := &cobra.Command{
 		Use:    "init",
 		Args:   cobra.ExactArgs(0),
 		Hidden: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return orchestrator.SystemInit(cmd.Context(), cfg, servicelocator.GetStaticStore(), servicelocator.GetDockerClient())
+			return orchestrator.SystemInit(cmd.Context(), cfg, servicelocator.GetStaticStore(), servicelocator.GetDockerClient(), orchestrator.SystemInitOptions{
+				OnlyDockerImages:    onlyImages,
+				OnlyPlatformAndLibs: onlyPlatformAndLibraries,
+			})
 		},
 	}
+
+	cmd.PersistentFlags().BoolVar(&onlyImages, "only-docker-images", false, "Only download the application docker images")
+	cmd.PersistentFlags().BoolVar(&onlyPlatformAndLibraries, "only-arduino-platform", false, "Only download the Arduino platform and libraries")
 
 	return cmd
 }
@@ -172,6 +183,7 @@ func newCleanUpCmd(cfg config.Configuration, docker command.Cli) *cobra.Command 
 			}
 			feedback.Printf("  - %d containers", result.ContainersRemoved)
 			feedback.Printf("  - %d images (%v)", result.ImagesRemoved, helpers.ToHumanMiB(result.SpaceFreed))
+			feedback.Printf("  - %d networks", result.NetworksRemoved)
 			return nil
 		},
 	}
@@ -184,15 +196,19 @@ func newNetworkModeCmd() *cobra.Command {
 		Short: "Manage the network mode of the system",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			pass, err := cmdutil.AskForPassword()
+			if err != nil {
+				return fmt.Errorf("failed to read password: %w", err)
+			}
 			switch args[0] {
 			case "enable":
-				if err := board.EnableNetworkMode(cmd.Context(), &local.LocalConnection{}); err != nil {
+				if err := board.EnableNetworkMode(cmd.Context(), &local.LocalConnection{}, pass); err != nil {
 					return fmt.Errorf("failed to enable network mode: %w", err)
 				}
 
 				feedback.Printf("network mode enabled and started")
 			case "disable":
-				if err := board.DisableNetworkMode(cmd.Context(), &local.LocalConnection{}); err != nil {
+				if err := board.DisableNetworkMode(cmd.Context(), &local.LocalConnection{}, pass); err != nil {
 					return fmt.Errorf("failed to disable network mode: %w", err)
 				}
 				feedback.Printf("network mode disabled and stopped")

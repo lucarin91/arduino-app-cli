@@ -29,8 +29,16 @@ jobs:
 
       - uses: golangci/golangci-lint-action@v8
         with:
-          version: v2.4.0
+          version: v2.11.4
           args: --timeout 300s
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Check license headers
+        run: go tool task go:check-license-headers
 
       - name: Check go mod
         run: |

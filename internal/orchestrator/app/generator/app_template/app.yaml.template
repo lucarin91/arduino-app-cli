@@ -4,9 +4,6 @@
 # The user-visible name of the application.
 name: {{ .Name }}
 
-# A brief description of what the application does.
-description: "{{.Description}}"
-
 # The icon for the application, can be an emoji or a short string.
 icon: {{ .Icon }}
 

@@ -1,15 +1,29 @@
+// This file is part of arduino-app-cli.
+//
+// Copyright (C) Arduino s.r.l. and/or its affiliated companies
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 package platform
 
 import (
-	"bytes"
-	"io"
-	"io/fs"
 	"log/slog"
-	"os"
 
 	"github.com/arduino/go-paths-helper"
 
 	"github.com/arduino/arduino-app-cli/internal/micro"
+	"github.com/arduino/arduino-app-cli/pkg/x/devicetree"
 )
 
 type GpioPin struct {
@@ -18,26 +32,24 @@ type GpioPin struct {
 }
 
 type Platform struct {
-	codeName   string
-	FQBN       string
-	PlatformID string
-	Linux      struct {
+	FQBN        string
+	PlatformID  string
+	CompileJobs int32
+	Linux       struct {
 		UserLeds   paths.PathList
 		StatusLeds paths.PathList
 	}
 	Micro struct {
-		ResetPin     GpioPin
-		SignalAppPin GpioPin
+		ResetPin GpioPin
 	}
 }
 
 func GetPlatform() Platform {
-	codeName := getCodeName()
-	switch codeName {
-	case "Imola":
-		slog.Debug("detected platform", "codeName", codeName)
+	compatible := devicetree.LoadCompatible()
+	slog.Debug("detected platform", "compatible", compatible)
+	switch {
+	case compatible.IsCompatibleWith("arduino,imola"):
 		return Platform{
-			codeName:   codeName,
 			FQBN:       "arduino:zephyr:unoq",
 			PlatformID: "arduino:zephyr",
 			Linux: struct{ UserLeds, StatusLeds paths.PathList }{
@@ -52,56 +64,35 @@ func GetPlatform() Platform {
 					"/sys/class/leds/red:user",
 				),
 			},
-			Micro: struct{ ResetPin, SignalAppPin GpioPin }{
-				ResetPin:     GpioPin{Chip: "gpiochip1", Number: 38},
-				SignalAppPin: GpioPin{Chip: "gpiochip1", Number: 70},
+			Micro: struct{ ResetPin GpioPin }{
+				ResetPin: GpioPin{Chip: "gpiochip1", Number: 38},
+			},
+			CompileJobs: 2,
+		}
+	case compatible.IsCompatibleWith("arduino,monza"):
+		return Platform{
+			FQBN:       "arduino:zephyr:ventunoq",
+			PlatformID: "arduino:zephyr",
+			Linux: struct{ UserLeds, StatusLeds paths.PathList }{
+				// TODO: add leds paths
+				StatusLeds: paths.NewPathList(),
+				UserLeds:   paths.NewPathList(),
+			},
+			CompileJobs: 0, // unlimited
+			Micro: struct{ ResetPin GpioPin }{
+				ResetPin: GpioPin{Chip: "gpiochip2", Number: 78},
 			},
 		}
 	default:
-		slog.Warn("not supported platform", "codeName", codeName)
-		return Platform{
-			codeName: codeName,
-		}
+		slog.Warn("not supported platform", "compatible", compatible)
+		return Platform{}
 	}
 }
 
 func (p Platform) GetMicro() micro.Micro {
-	return micro.New(micro.GpioPin(p.Micro.ResetPin), micro.GpioPin(p.Micro.SignalAppPin))
+	return micro.New(micro.GpioPin(p.Micro.ResetPin))
 }
 
-func getCodeName() string {
-	return getCodeNameInternal(os.DirFS("/"))
-}
-
-func getCodeNameInternal(fs fs.FS) string {
-	trimAll := func(s []byte) []byte {
-		return bytes.Trim(s, " \n\t\r\x00")
-	}
-
-	readFile := func(path string) ([]byte, error) {
-		f, err := fs.Open(path)
-		if err != nil {
-			return nil, err
-		}
-		defer f.Close()
-
-		if buf, err := io.ReadAll(f); err != nil {
-			return nil, err
-		} else {
-			return buf, nil
-		}
-	}
-
-	if buf, err := readFile("sys/class/dmi/id/product_name"); err == nil {
-		return string(trimAll(buf))
-	} else if buf, err := readFile("sys/firmware/devicetree/base/model"); err == nil {
-		if idx := bytes.LastIndex(buf, []byte(",")); idx != -1 {
-			return string(trimAll(buf[idx+1:]))
-		}
-		if idx := bytes.LastIndex(buf, []byte(" ")); idx != -1 {
-			return string(trimAll(buf[idx+1:]))
-		}
-	}
-
-	return ""
+func (p Platform) SupportFlashToRam() bool {
+	return p.FQBN == "arduino:zephyr:unoq"
 }

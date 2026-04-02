@@ -1,27 +1,33 @@
 // This file is part of arduino-app-cli.
 //
-// Copyright 2025 ARDUINO SA (http://www.arduino.cc/)
+// Copyright (C) Arduino s.r.l. and/or its affiliated companies
 //
-// This software is released under the GNU General Public License version 3,
-// which covers the main part of arduino-app-cli.
-// The terms of this license can be found at:
-// https://www.gnu.org/licenses/gpl-3.0.en.html
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
-// You can be released from the requirements of the above licenses by purchasing
-// a commercial license. Buying such a license is mandatory if you want to
-// modify or otherwise use the software for commercial activities involving the
-// Arduino software without disclosing the source code of your own applications.
-// To purchase a commercial license, send an email to license@arduino.cc.
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 package daemon
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
 
+	"github.com/docker/cli/cli/command"
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
 	"github.com/jub0bs/cors"
 	"github.com/spf13/cobra"
 
@@ -41,6 +47,11 @@ func NewDaemonCmd(cfg config.Configuration, version string) *cobra.Command {
 		Short: "Run the Arduino App CLI as an HTTP daemon",
 		Run: func(cmd *cobra.Command, args []string) {
 			daemonPort, _ := cmd.Flags().GetString("port")
+
+			err := stopArduinoContainers(cmd.Context(), servicelocator.GetDockerClient())
+			if err != nil {
+				slog.Warn("Failed to stop containers", slog.String("error", err.Error()))
+			}
 
 			// start the default app in the background
 			go func() {
@@ -144,4 +155,22 @@ func httpHandler(ctx context.Context, cfg config.Configuration, daemonPort, vers
 	_ = httpSrv.Shutdown(ctx)
 	cancel()
 	slog.Info("HTTP server shut down", slog.String("address", address))
+}
+
+// stopArduinoContainers stops the Arduino containers that start running automatically when the board boots
+func stopArduinoContainers(ctx context.Context, docker command.Cli) error {
+	containers, err := docker.Client().ContainerList(ctx, container.ListOptions{
+		All:     false,
+		Filters: filters.NewArgs(filters.Arg("label", orchestrator.DockerAppLabel+"=true")),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to list containers: %w", err)
+	}
+	for _, c := range containers {
+		slog.Debug("Stopping container", slog.String("ID", c.ID))
+		if err := docker.Client().ContainerStop(ctx, c.ID, container.StopOptions{}); err != nil {
+			slog.Warn("Failed to stop container", "ID", c.ID, "error", err.Error())
+		}
+	}
+	return nil
 }

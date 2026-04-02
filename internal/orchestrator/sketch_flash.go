@@ -5,7 +5,6 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"time"
 
 	"github.com/arduino/arduino-cli/commands"
 	rpc "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/commands/v1"
@@ -42,36 +41,6 @@ func uploadSketchInRam(ctx context.Context,
 		}
 	}
 	return upload()
-}
-
-func uploadSketchWaitForApp(ctx context.Context,
-	w io.Writer,
-	srv rpc.ArduinoCoreServiceServer,
-	inst *rpc.Instance,
-	platform platform.Platform,
-	sketchPath string,
-	buildPath string,
-) error {
-	stream, _ := commands.UploadToServerStreams(ctx, w, w)
-	if err := srv.Upload(&rpc.UploadRequest{
-		Instance:   inst,
-		Fqbn:       platform.FQBN,
-		SketchPath: sketchPath,
-		ImportDir:  buildPath,
-	}, stream); err != nil {
-		return err
-	}
-
-	// After the sketch is uploaded, we signal the microcontroller to start.
-	go func() {
-		time.Sleep(500 * time.Millisecond) // wait a bit.
-
-		if err := platform.GetMicro().SignalAppStart(); err != nil {
-			slog.Warn("failed to signal app start to microcontroller", slog.String("error", err.Error()))
-		}
-	}()
-
-	return nil
 }
 
 // configureMicroInRamMode uploads an empty binary overing any sketch previously uploaded in flash.

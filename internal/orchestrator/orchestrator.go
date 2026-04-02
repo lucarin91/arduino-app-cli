@@ -1,17 +1,19 @@
 // This file is part of arduino-app-cli.
 //
-// Copyright 2025 ARDUINO SA (http://www.arduino.cc/)
+// Copyright (C) Arduino s.r.l. and/or its affiliated companies
 //
-// This software is released under the GNU General Public License version 3,
-// which covers the main part of arduino-app-cli.
-// The terms of this license can be found at:
-// https://www.gnu.org/licenses/gpl-3.0.en.html
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
-// You can be released from the requirements of the above licenses by purchasing
-// a commercial license. Buying such a license is mandatory if you want to
-// modify or otherwise use the software for commercial activities involving the
-// Arduino software without disclosing the source code of your own applications.
-// To purchase a commercial license, send an email to license@arduino.cc.
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 package orchestrator
 
@@ -1122,7 +1124,7 @@ func compileUploadSketch(
 		Fqbn:       fqbn,
 		SketchPath: sketchPath.String(),
 		BuildPath:  buildPath.String(),
-		Jobs:       2,
+		Jobs:       platform.CompileJobs,
 	}
 
 	err = srv.Compile(&compileReq, server)
@@ -1146,11 +1148,24 @@ func compileUploadSketch(
 		slog.Info("Used library " + lib.GetName() + " (" + lib.GetVersion() + ") in " + lib.GetInstallDir())
 	}
 
-	if hasWaitForApp {
-		return uploadSketchWaitForApp(ctx, w, srv, inst, platform, sketchPath.String(), buildPath.String())
-	} else {
-		return uploadSketchInRam(ctx, w, srv, inst, platform, sketchPath.String(), buildPath.String())
+	if !hasWaitForApp && platform.SupportFlashToRam() {
+		if err := uploadSketchInRam(ctx, w, srv, inst, platform, sketchPath.String(), buildPath.String()); err != nil {
+			slog.Warn("failed to upload in ram mode, trying to configure the board in ram mode, and retry", slog.String("error", err.Error()))
+			if err := configureMicroInRamMode(ctx, w, srv, inst, platform); err != nil {
+				return err
+			}
+			return uploadSketchInRam(ctx, w, srv, inst, platform, sketchPath.String(), buildPath.String())
+		}
+		return nil
 	}
+
+	stream, _ := commands.UploadToServerStreams(ctx, w, w)
+	return srv.Upload(&rpc.UploadRequest{
+		Instance:   inst,
+		Fqbn:       platform.FQBN,
+		SketchPath: sketchPath.String(),
+		ImportDir:  buildPath.String(),
+	}, stream)
 }
 
 type ConfigResponse struct {

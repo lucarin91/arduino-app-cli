@@ -1,17 +1,19 @@
 // This file is part of arduino-app-cli.
 //
-// Copyright 2025 ARDUINO SA (http://www.arduino.cc/)
+// Copyright (C) Arduino s.r.l. and/or its affiliated companies
 //
-// This software is released under the GNU General Public License version 3,
-// which covers the main part of arduino-app-cli.
-// The terms of this license can be found at:
-// https://www.gnu.org/licenses/gpl-3.0.en.html
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
-// You can be released from the requirements of the above licenses by purchasing
-// a commercial license. Buying such a license is mandatory if you want to
-// modify or otherwise use the software for commercial activities involving the
-// Arduino software without disclosing the source code of your own applications.
-// To purchase a commercial license, send an email to license@arduino.cc.
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 package orchestrator
 
@@ -37,6 +39,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/api/types/network"
 	dockerClient "github.com/docker/docker/client"
 	"github.com/sirupsen/logrus"
 	"go.bug.st/f"
@@ -60,10 +63,26 @@ type initProgress struct {
 
 type initProgressCallback func(progress initProgress)
 
+type SystemInitOptions struct {
+	OnlyDockerImages    bool
+	OnlyPlatformAndLibs bool
+}
+
+func (o SystemInitOptions) Validate() error {
+	if o.OnlyDockerImages && o.OnlyPlatformAndLibs {
+		return errors.New("only one of OnlyDockerImages and OnlyPlatformAndLibs can be true")
+	}
+	return nil
+}
+
 // SystemInit pulls all the docker images needed for the current version of the software to run and the
 // sketch libraries used in the example apps. Can be used to pre-install docker images/libraries on an
 // empty system, or to update all the docker images/libraries that need it.
-func SystemInit(ctx context.Context, cfg config.Configuration, staticStore *store.StaticStore, docker *command.DockerCli) error {
+func SystemInit(ctx context.Context, cfg config.Configuration, staticStore *store.StaticStore, docker *command.DockerCli, options SystemInitOptions) error {
+	if err := options.Validate(); err != nil {
+		return err
+	}
+
 	stdout, _, err := feedback.DirectStreams()
 	if err != nil {
 		feedback.Fatal(err.Error(), feedback.ErrBadArgument)
@@ -79,13 +98,28 @@ func SystemInit(ctx context.Context, cfg config.Configuration, staticStore *stor
 		}
 	}
 
-	if err := downloadLibsAndPlatformsUsedInExamples(ctx, cfg, progressCB); err != nil {
-		return fmt.Errorf("failed to download libs and platforms used in examples: %w", err)
+	var downloadPlatformAndLibs, downloadDockerImages bool
+	switch {
+	case options.OnlyPlatformAndLibs:
+		downloadPlatformAndLibs = true
+	case options.OnlyDockerImages:
+		downloadDockerImages = true
+	default:
+		downloadPlatformAndLibs = true
+		downloadDockerImages = true
 	}
 
-	// TODO: use progressCB instead of stdout
-	if err := downloadContainersUsedInExamples(ctx, cfg, staticStore, docker, stdout); err != nil {
-		return fmt.Errorf("failed to download container images used in examples: %w", err)
+	if downloadPlatformAndLibs {
+		if err := downloadLibsAndPlatformsUsedInExamples(ctx, cfg, progressCB); err != nil {
+			return fmt.Errorf("failed to download libs and platforms used in examples: %w", err)
+		}
+	}
+
+	if downloadDockerImages {
+		// TODO: use progressCB instead of stdout
+		if err := downloadContainersUsedInExamples(ctx, cfg, staticStore, docker, stdout); err != nil {
+			return fmt.Errorf("failed to download container images used in examples: %w", err)
+		}
 	}
 
 	return nil
@@ -272,6 +306,7 @@ func parseAllModelsRunnerImageTag(staticStore *store.StaticStore) ([]string, err
 
 type SystemCleanupResult struct {
 	ContainersRemoved int
+	NetworksRemoved   int
 	ImagesRemoved     int
 	RunningAppRemoved bool
 	SpaceFreed        int64 // in bytes
@@ -286,7 +321,7 @@ func (s SystemCleanupResult) IsEmpty() bool {
 func SystemCleanup(ctx context.Context, cfg config.Configuration, staticStore *store.StaticStore, docker command.Cli, platform platform.Platform) (SystemCleanupResult, error) {
 	var result SystemCleanupResult
 
-	// Remove running app and dangling containers
+	// Remove running app
 	runningApp, err := getRunningApp(ctx, docker.Client())
 	if err != nil {
 		feedback.Warnf("failed to get running app - %v", err)
@@ -300,10 +335,17 @@ func SystemCleanup(ctx context.Context, cfg config.Configuration, staticStore *s
 		}
 		result.RunningAppRemoved = true
 	}
+
+	// Remove dangling stuff
 	if count, err := removeDanglingContainers(ctx, docker.Client()); err != nil {
 		feedback.Warnf("failed to remove dangling containers - %v", err)
 	} else {
 		result.ContainersRemoved = count
+	}
+	if count, err := removeDanglingNetworks(ctx, docker.Client()); err != nil {
+		feedback.Warnf("failed to remove dangling networks - %v", err)
+	} else {
+		result.NetworksRemoved = count
 	}
 
 	// Remove unused images
@@ -352,14 +394,15 @@ func removeImage(ctx context.Context, docker dockerClient.APIClient, imageName s
 
 // imgages required by the system
 func getRequiredImages(cfg config.Configuration, staticStore *store.StaticStore) ([]string, error) {
-	requiredImages := []string{cfg.PythonImage}
-
 	modelsRunnersContainers, err := parseAllModelsRunnerImageTag(staticStore)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse models runner images: %w", err)
 	}
 
+	requiredImages := make([]string, 0, 1+len(modelsRunnersContainers))
+	requiredImages = append(requiredImages, cfg.PythonImage)
 	requiredImages = append(requiredImages, modelsRunnersContainers...)
+
 	return requiredImages, nil
 }
 
@@ -382,6 +425,31 @@ func removeDanglingContainers(ctx context.Context, docker dockerClient.APIClient
 		}
 		counter++
 	}
+
+	return counter, nil
+}
+
+func removeDanglingNetworks(ctx context.Context, docker dockerClient.APIClient) (int, error) {
+	const dockerComposeProjectLabel = "com.docker.compose.project"
+
+	networks, err := docker.NetworkList(ctx, network.ListOptions{
+		Filters: filters.NewArgs(filters.Arg("label", dockerComposeProjectLabel)),
+	})
+	if err != nil {
+		return 0, fmt.Errorf("failed to list networks: %w", err)
+	}
+
+	var counter int
+	for _, info := range networks {
+		if !strings.Contains(info.Labels[dockerComposeProjectLabel], "arduino-app-cli") {
+			continue
+		}
+		if err := docker.NetworkRemove(ctx, info.ID); err != nil {
+			return 0, fmt.Errorf("failed to remove network %s: %w", info.ID, err)
+		}
+		counter++
+	}
+
 	return counter, nil
 }
 

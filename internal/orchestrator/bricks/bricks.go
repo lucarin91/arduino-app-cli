@@ -31,7 +31,6 @@ import (
 	"github.com/arduino/arduino-app-cli/internal/orchestrator/bricksindex"
 	"github.com/arduino/arduino-app-cli/internal/orchestrator/config"
 	"github.com/arduino/arduino-app-cli/internal/orchestrator/modelsindex"
-	"github.com/arduino/arduino-app-cli/internal/store"
 )
 
 var (
@@ -42,28 +41,25 @@ var (
 type Service struct {
 	modelsIndex *modelsindex.ModelsIndex
 	bricksIndex *bricksindex.BricksIndex
-	staticStore *store.StaticStore
 }
 
 func NewService(
 	modelsIndex *modelsindex.ModelsIndex,
 	bricksIndex *bricksindex.BricksIndex,
-	staticStore *store.StaticStore,
 ) *Service {
 	return &Service{
 		modelsIndex: modelsIndex,
 		bricksIndex: bricksIndex,
-		staticStore: staticStore,
 	}
 }
 
 func (s *Service) List() (BrickListResult, error) {
-	res := BrickListResult{Bricks: make([]BrickListItem, len(s.bricksIndex.Bricks))}
-	for i, brick := range s.bricksIndex.Bricks {
+	res := BrickListResult{Bricks: make([]BrickListItem, len(s.bricksIndex.ListBricks()))}
+	for i, brick := range s.bricksIndex.ListBricks() {
 		res.Bricks[i] = BrickListItem{
 			ID:           brick.ID,
 			Name:         brick.Name,
-			Author:       "Arduino", // TODO: for now we only support our bricks
+			Author:       brick.Source,
 			Description:  brick.Description,
 			Category:     brick.Category,
 			Status:       "installed",
@@ -76,7 +72,7 @@ func (s *Service) List() (BrickListResult, error) {
 func (s *Service) AppBrickInstancesList(a *app.ArduinoApp) (AppBrickInstancesResult, error) {
 	res := AppBrickInstancesResult{BrickInstances: make([]BrickInstance, len(a.Descriptor.Bricks))}
 	for i, brickInstance := range a.Descriptor.Bricks {
-		brick, found := s.bricksIndex.FindBrickByID(brickInstance.ID)
+		brick, found := s.bricksIndex.WithAppBricks(a.LocalBricks).FindBrickByID(brickInstance.ID)
 		if !found {
 			return AppBrickInstancesResult{}, fmt.Errorf("brick not found with id %s", brickInstance.ID)
 		}
@@ -86,7 +82,7 @@ func (s *Service) AppBrickInstancesList(a *app.ArduinoApp) (AppBrickInstancesRes
 		res.BrickInstances[i] = BrickInstance{
 			ID:              brick.ID,
 			Name:            brick.Name,
-			Author:          "Arduino", // TODO: for now we only support our bricks
+			Author:          brick.Source,
 			Category:        brick.Category,
 			Status:          "installed",
 			RequireModel:    brick.RequireModel,
@@ -107,7 +103,8 @@ func (s *Service) AppBrickInstancesList(a *app.ArduinoApp) (AppBrickInstancesRes
 }
 
 func (s *Service) AppBrickInstanceDetails(a *app.ArduinoApp, brickID string) (BrickInstance, error) {
-	brick, found := s.bricksIndex.FindBrickByID(brickID)
+	bricksindex := s.bricksIndex.WithAppBricks(a.LocalBricks)
+	brick, found := bricksindex.FindBrickByID(brickID)
 	if !found {
 		return BrickInstance{}, ErrBrickNotFound
 	}
@@ -119,10 +116,17 @@ func (s *Service) AppBrickInstanceDetails(a *app.ArduinoApp, brickID string) (Br
 
 	variables, configVariables := getInstanceBrickConfigVariableDetails(brick, a.Descriptor.Bricks[brickIndex].Variables)
 
+	var readme string
+	if r, err := brick.GetReadmeFile(); err == nil {
+		readme = r
+	} else {
+		slog.Warn("cannot open readme for brick", "brickID", brick.ID, "error", err.Error())
+	}
+
 	return BrickInstance{
 		ID:              brickID,
 		Name:            brick.Name,
-		Author:          "Arduino", // TODO: for now we only support our bricks
+		Author:          brick.Source,
 		Category:        brick.Category,
 		Status:          "installed", // For now every Arduino brick are installed
 		RequireModel:    brick.RequireModel,
@@ -136,6 +140,7 @@ func (s *Service) AppBrickInstanceDetails(a *app.ArduinoApp, brickID string) (Br
 				Description: m.ModuleDescription,
 			}
 		}),
+		Readme: readme,
 	}, nil
 }
 
@@ -175,17 +180,17 @@ func (s *Service) BricksDetails(id string, idProvider *app.IDProvider,
 		return BrickDetailsResult{}, ErrBrickNotFound
 	}
 
-	readme, err := s.staticStore.GetBrickReadmeFromID(brick.ID)
+	readme, err := brick.GetReadmeFile()
 	if err != nil {
 		return BrickDetailsResult{}, fmt.Errorf("cannot open docs for brick %s: %w", id, err)
 	}
 
-	apiDocsPath, err := s.staticStore.GetBrickApiDocPathFromID(brick.ID)
-	if err != nil {
-		return BrickDetailsResult{}, fmt.Errorf("cannot open api-docs for brick %s: %w", id, err)
+	apiDocsPath, found := brick.GetApiDocPath()
+	if !found {
+		return BrickDetailsResult{}, fmt.Errorf("cannot open api-docs for brick %s", id)
 	}
 
-	examplePaths, err := s.staticStore.GetBrickCodeExamplesPathFromID(brick.ID)
+	examplePaths, err := brick.GetExamplesPath()
 	if err != nil {
 		return BrickDetailsResult{}, fmt.Errorf("cannot open code examples for brick %s: %w", id, err)
 	}
@@ -205,14 +210,14 @@ func (s *Service) BricksDetails(id string, idProvider *app.IDProvider,
 	return BrickDetailsResult{
 		ID:           id,
 		Name:         brick.Name,
-		Author:       "Arduino", // TODO: for now we only support our bricks
+		Author:       brick.Source,
 		Description:  brick.Description,
 		Category:     brick.Category,
 		RequireModel: brick.RequireModel,
 		Status:       "installed", // For now every Arduino brick are installed
 		Variables:    variables,
 		Readme:       readme,
-		ApiDocsPath:  apiDocsPath,
+		ApiDocsPath:  apiDocsPath.String(),
 		CodeExamples: codeExamples,
 		UsedByApps:   usedByApps,
 		CompatibleModels: f.Map(s.modelsIndex.GetModelsByBrick(brick.ID), func(m modelsindex.AIModel) AIModel {
@@ -304,7 +309,7 @@ func (s *Service) BrickCreate(
 	req BrickCreateUpdateRequest,
 	appCurrent app.ArduinoApp,
 ) error {
-	brick, present := s.bricksIndex.FindBrickByID(req.ID)
+	brick, present := s.bricksIndex.WithAppBricks(appCurrent.LocalBricks).FindBrickByID(req.ID)
 	if !present {
 		return fmt.Errorf("brick %q not found", req.ID)
 	}
@@ -367,7 +372,7 @@ func (s *Service) BrickUpdate(
 	req BrickCreateUpdateRequest,
 	appCurrent app.ArduinoApp,
 ) error {
-	brickFromIndex, present := s.bricksIndex.FindBrickByID(req.ID)
+	brickFromIndex, present := s.bricksIndex.WithAppBricks(appCurrent.LocalBricks).FindBrickByID(req.ID)
 	if !present {
 		return fmt.Errorf("brick %q not found into the brick index", req.ID)
 	}
@@ -428,7 +433,7 @@ func (s *Service) BrickDelete(
 	appCurrent *app.ArduinoApp,
 	id string,
 ) error {
-	if _, present := s.bricksIndex.FindBrickByID(id); !present {
+	if _, present := s.bricksIndex.WithAppBricks(appCurrent.LocalBricks).FindBrickByID(id); !present {
 		return ErrBrickNotFound
 	}
 

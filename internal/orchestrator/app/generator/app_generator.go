@@ -223,3 +223,112 @@ func formatPorts(ports []int) string {
 	}
 	return strings.Join(s, ", ")
 }
+
+const brickTemplateRoot = "brick_template"
+
+//go:embed all:brick_template
+var fsBrick embed.FS
+
+var ErrBrickAlreadyExists = fmt.Errorf("brick already exists")
+
+func GenerateLocalBrick(basePath *paths.Path, id string, name, description string) error {
+	brickDir := basePath.Join(id)
+	if brickDir.Exist() {
+		return fmt.Errorf("%w: %q", ErrBrickAlreadyExists, id)
+	}
+
+	if err := brickDir.MkdirAll(); err != nil {
+		return fmt.Errorf("failed to create bricks directory: %w", err)
+	}
+
+	type brickData struct {
+		ID          string
+		Name        string
+		Description string
+	}
+
+	data := brickData{
+		ID:          id,
+		Name:        name,
+		Description: description,
+	}
+
+	generateBrickConfig := func(brickDir *paths.Path, data brickData) error {
+		configTmpl := template.Must(template.ParseFS(fsBrick, path.Join(brickTemplateRoot, "brick_config.yaml.template")))
+		outputPath := brickDir.Join("brick_config.yaml")
+		file, err := os.Create(outputPath.String())
+		if err != nil {
+			return fmt.Errorf("failed to create file %s: %w", outputPath.String(), err)
+		}
+		defer file.Close()
+
+		return configTmpl.Execute(file, data)
+	}
+
+	generateBrickReadme := func(brickDir *paths.Path, data brickData) error {
+		readmeTmpl := template.Must(template.ParseFS(fsBrick, path.Join(brickTemplateRoot, "README.md.template")))
+
+		outputPath := brickDir.Join("README.md")
+		file, err := os.Create(outputPath.String())
+		if err != nil {
+			return fmt.Errorf("failed to create file %s: %w", outputPath.String(), err)
+		}
+		defer file.Close()
+
+		return readmeTmpl.Execute(file, data)
+	}
+
+	copyBrickStaticFiles := func(brickDir *paths.Path) error {
+		fileList, err := fsBrick.ReadDir(brickTemplateRoot)
+		if err != nil {
+			return fmt.Errorf("read brick template directory: %w", err)
+		}
+
+		for _, filePath := range fileList {
+			if filePath.IsDir() {
+				continue
+			}
+			// Skip template files
+			if strings.HasSuffix(filePath.Name(), ".template") {
+				continue
+			}
+
+			srcPath := path.Join(brickTemplateRoot, filePath.Name())
+			destPath := brickDir.Join(filePath.Name())
+
+			if err := func() error {
+				srcFile, err := fsBrick.Open(srcPath)
+				if err != nil {
+					return err
+				}
+				defer srcFile.Close()
+
+				destFile, err := destPath.Create()
+				if err != nil {
+					return fmt.Errorf("create %q file: %w", destPath, err)
+				}
+				defer destFile.Close()
+
+				_, err = io.Copy(destFile, srcFile)
+				return err
+			}(); err != nil {
+				return fmt.Errorf("copy file %s: %w", filePath.Name(), err)
+			}
+		}
+		return nil
+	}
+
+	if err := generateBrickConfig(brickDir, data); err != nil {
+		return fmt.Errorf("failed to generate brick_config.yaml: %w", err)
+	}
+
+	if err := generateBrickReadme(brickDir, data); err != nil {
+		return fmt.Errorf("failed to generate README.md: %w", err)
+	}
+
+	if err := copyBrickStaticFiles(brickDir); err != nil {
+		slog.Warn("error copying static brick files", slog.String("brick", id), slog.Any("error", err))
+	}
+
+	return nil
+}

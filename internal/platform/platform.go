@@ -92,3 +92,7 @@ func GetPlatform() Platform {
 func (p Platform) GetMicro() micro.Micro {
 	return micro.New(micro.GpioPin(p.Micro.ResetPin))
 }
+
+func (p Platform) SupportFlashToRam() bool {
+	return p.FQBN == "arduino:zephyr:unoq"
+}

@@ -104,7 +104,6 @@ type MenuOption struct {
 	values []string
 }
 
-var FlashToRam = MenuOptionValue{name: "flash_mode", value: "ram"}
 var WaitForApp = MenuOptionValue{name: "wait_linux_boot", value: "app"}
 
 type MenuOptionValue struct {

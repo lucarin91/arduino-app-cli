@@ -33,8 +33,7 @@ import (
 )
 
 type AppLocalBrickCreateRequest struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
+	Name string `json:"name"`
 }
 
 type AppLocalBrickCreateResponse struct {
@@ -73,7 +72,7 @@ func HandleAppLocalBrickCreate(idProvider *app.IDProvider) http.HandlerFunc {
 			return
 		}
 
-		err = generator.GenerateLocalBrick(a.GetBricksPath(), id, req.Name, req.Description)
+		err = generator.GenerateLocalBrick(a.GetBricksPath(), id, req.Name)
 		if err != nil {
 			if errors.Is(err, generator.ErrBrickAlreadyExists) {
 				render.EncodeResponse(w, http.StatusConflict, models.ErrorResponse{Details: fmt.Sprintf("a brick with the same id '%s' already exists", id)})

@@ -1158,12 +1158,12 @@ func compileUploadSketch(
 
 	// Support the legacy ram upload option if there isn't the new wait_linux_boot option.
 	if !menuOptions.Has(WaitForApp) && menuOptions.Has(FlashToRam) {
-		if err := uploadSketchInRam(ctx, w, srv, inst, platform, sketchPath.String(), buildPath.String()); err != nil {
+		if err := legacyUploadSketchInRam(ctx, w, srv, inst, platform, sketchPath.String(), buildPath.String()); err != nil {
 			slog.Warn("failed to upload in ram mode, trying to configure the board in ram mode, and retry", slog.String("error", err.Error()))
 			if err := configureMicroInRamMode(ctx, w, srv, inst, platform); err != nil {
 				return err
 			}
-			return uploadSketchInRam(ctx, w, srv, inst, platform, sketchPath.String(), buildPath.String())
+			return legacyUploadSketchInRam(ctx, w, srv, inst, platform, sketchPath.String(), buildPath.String())
 		}
 		return nil
 	}

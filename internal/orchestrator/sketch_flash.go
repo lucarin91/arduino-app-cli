@@ -32,7 +32,7 @@ import (
 	"github.com/arduino/arduino-app-cli/internal/platform"
 )
 
-func uploadSketchInRam(ctx context.Context,
+func legacyUploadSketchInRam(ctx context.Context,
 	w io.Writer,
 	srv rpc.ArduinoCoreServiceServer,
 	inst *rpc.Instance,

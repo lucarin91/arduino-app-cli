@@ -82,7 +82,7 @@ func NewHTTPRouter(
 	mux.Handle("GET /v1/apps/events", handlers.HandlerAppStatus(dockerClient, idProvider, cfg))
 	mux.Handle("GET /v1/apps/{appID}", handlers.HandleAppDetails(dockerClient, bricksIndex, idProvider, cfg))
 	mux.Handle("PATCH /v1/apps/{appID}", handlers.HandleAppDetailsEdits(dockerClient, bricksIndex, idProvider, cfg))
-	mux.Handle("GET /v1/apps/{appID}/logs", handlers.HandleAppLogs(dockerClient, idProvider, staticStore))
+	mux.Handle("GET /v1/apps/{appID}/logs", handlers.HandleAppLogs(dockerClient, idProvider, bricksIndex))
 	mux.Handle("POST /v1/apps/{appID}/start", handlers.HandleAppStart(dockerClient, provisioner, modelsIndex, bricksIndex, idProvider, cfg, staticStore, platform))
 	mux.Handle("POST /v1/apps/{appID}/stop", handlers.HandleAppStop(dockerClient, idProvider, platform))
 	mux.Handle("POST /v1/apps/{appID}/clone", handlers.HandleAppClone(dockerClient, idProvider, cfg))
@@ -99,6 +99,7 @@ func NewHTTPRouter(
 	mux.Handle("PUT /v1/apps/{appID}/bricks/{brickID}", handlers.HandleBrickCreate(brickService, idProvider))
 	mux.Handle("PATCH /v1/apps/{appID}/bricks/{brickID}", handlers.HandleBrickUpdates(brickService, idProvider))
 	mux.Handle("DELETE /v1/apps/{appID}/bricks/{brickID}", handlers.HandleBrickDelete(brickService, idProvider))
+	mux.Handle("POST /v1/apps/{appID}/bricks", handlers.HandleAppLocalBrickCreate(idProvider))
 
 	mux.Handle("GET /v1/docs/", http.StripPrefix("/v1/docs/", handlers.DocsServer(docsFS)))
 

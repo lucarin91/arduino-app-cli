@@ -122,6 +122,8 @@ func StartApp(
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
 
+		bricksIndex = bricksIndex.WithAppBricks(appToStart.LocalBricks)
+
 		err := checkBricks(appToStart.Descriptor, bricksIndex, modelsIndex)
 		if err != nil {
 			yield(StreamMessage{error: err})
@@ -196,7 +198,7 @@ func StartApp(
 				return
 			}
 
-			if err := provisioner.App(ctx, bricksIndex, &appToStart, cfg, envs, staticStore, platform, devices); err != nil {
+			if err := provisioner.App(ctx, bricksIndex, &appToStart, cfg, envs, platform, devices); err != nil {
 				yield(StreamMessage{error: err})
 				return
 			}
@@ -272,7 +274,7 @@ func getAppEnvironmentVariables(app app.ArduinoApp, brickIndex *bricksindex.Bric
 	envs := make(helpers.EnvVars)
 
 	for _, brick := range app.Descriptor.Bricks {
-		if brickDef, found := brickIndex.FindBrickByID(brick.ID); found {
+		if brickDef, found := brickIndex.WithAppBricks(app.LocalBricks).FindBrickByID(brick.ID); found {
 			maps.Insert(envs, brickDef.GetDefaultVariables())
 		}
 
@@ -658,6 +660,7 @@ func AppDetails(
 	idProvider *app.IDProvider,
 	cfg config.Configuration,
 ) (AppDetailedInfo, error) {
+	bricksIndex = bricksIndex.WithAppBricks(userApp.LocalBricks)
 	var wg sync.WaitGroup
 	wg.Add(2)
 	var defaultAppPath string

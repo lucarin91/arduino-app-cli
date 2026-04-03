@@ -104,10 +104,22 @@ type MenuOption struct {
 	values []string
 }
 
-func (o MenuOptions) Has(name, value string) bool {
+var FlashToRam = MenuOptionValue{name: "flash_mode", value: "ram"}
+var WaitForApp = MenuOptionValue{name: "wait_linux_boot", value: "app"}
+
+type MenuOptionValue struct {
+	name  string
+	value string
+}
+
+func (o MenuOptionValue) String() string {
+	return o.name + "=" + o.value
+}
+
+func (o MenuOptions) Has(optionValue MenuOptionValue) bool {
 	return slices.ContainsFunc(o, func(option MenuOption) bool {
-		if option.name == name {
-			return slices.Contains(option.values, value)
+		if option.name == optionValue.name {
+			return slices.Contains(option.values, optionValue.value)
 		}
 		return false
 	})

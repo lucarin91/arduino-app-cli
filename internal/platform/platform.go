@@ -18,11 +18,13 @@
 package platform
 
 import (
+	"encoding/json"
 	"log/slog"
 
 	"github.com/arduino/go-paths-helper"
 
 	"github.com/arduino/arduino-app-cli/internal/micro"
+	"github.com/arduino/arduino-app-cli/internal/orchestrator/config"
 	"github.com/arduino/arduino-app-cli/pkg/x/devicetree"
 )
 
@@ -32,24 +34,25 @@ type GpioPin struct {
 }
 
 type Platform struct {
-	FQBN        string
-	PlatformID  string
-	CompileJobs int32
+	FQBN        string `json:"fqbn"`
+	PlatformID  string `json:"platform_id"`
+	CompileJobs int32  `json:"compile_jobs"`
 	Linux       struct {
 		UserLeds   paths.PathList
 		StatusLeds paths.PathList
-	}
+	} `json:"-"`
 	Micro struct {
 		ResetPin GpioPin
-	}
+	} `json:"-"`
 }
 
-func GetPlatform() Platform {
+func GetPlatform(cfg config.Configuration) Platform {
 	compatible := devicetree.LoadCompatible()
 	slog.Debug("detected platform", "compatible", compatible)
+	var platform Platform
 	switch {
 	case compatible.IsCompatibleWith("arduino,imola"):
-		return Platform{
+		platform = Platform{
 			FQBN:       "arduino:zephyr:unoq",
 			PlatformID: "arduino:zephyr",
 			Linux: struct{ UserLeds, StatusLeds paths.PathList }{
@@ -70,7 +73,7 @@ func GetPlatform() Platform {
 			},
 		}
 	case compatible.IsCompatibleWith("arduino,monza"):
-		return Platform{
+		platform = Platform{
 			FQBN:       "arduino:zephyr:ventunoq",
 			PlatformID: "arduino:zephyr",
 			Linux: struct{ UserLeds, StatusLeds paths.PathList }{
@@ -85,8 +88,21 @@ func GetPlatform() Platform {
 		}
 	default:
 		slog.Warn("not supported platform", "compatible", compatible)
-		return Platform{}
 	}
+
+	if filePath := cfg.DataDir().Join("platform.json"); filePath.Exist() {
+		if f, err := filePath.Open(); err == nil {
+			defer f.Close()
+			if err = json.NewDecoder(f).Decode(&platform); err != nil {
+				slog.Warn("failed to decode override platform.json", "error", err)
+			} else {
+				slog.Debug("loaded override from platform.json from file", "file", filePath.String())
+			}
+		}
+	}
+
+	slog.Info("using platform config", "platform", platform)
+	return platform
 }
 
 func (p Platform) GetMicro() micro.Micro {

@@ -46,7 +46,7 @@ type Platform struct {
 	} `json:"-"`
 }
 
-func GetPlatform(cfg config.Configuration) Platform {
+func GetPlatform(path *paths.Path) Platform {
 	compatible := devicetree.LoadCompatible()
 	slog.Debug("detected platform", "compatible", compatible)
 	var platform Platform

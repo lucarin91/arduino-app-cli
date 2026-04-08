@@ -24,7 +24,6 @@ import (
 	"github.com/arduino/go-paths-helper"
 
 	"github.com/arduino/arduino-app-cli/internal/micro"
-	"github.com/arduino/arduino-app-cli/internal/orchestrator/config"
 	"github.com/arduino/arduino-app-cli/pkg/x/devicetree"
 )
 
@@ -46,7 +45,7 @@ type Platform struct {
 	} `json:"-"`
 }
 
-func GetPlatform(path *paths.Path) Platform {
+func GetPlatform(dir *paths.Path) Platform {
 	compatible := devicetree.LoadCompatible()
 	slog.Debug("detected platform", "compatible", compatible)
 	var platform Platform
@@ -90,16 +89,18 @@ func GetPlatform(path *paths.Path) Platform {
 		slog.Warn("not supported platform", "compatible", compatible)
 	}
 
-	if filePath := cfg.DataDir().Join("platform.json"); filePath.Exist() {
-		if f, err := filePath.Open(); err == nil {
-			defer f.Close()
-			if err = json.NewDecoder(f).Decode(&platform); err == nil {
-				slog.Debug("loaded override from platform.json file", "file", filePath.String(), "platform", platform)
+	if dir != nil {
+		if filePath := dir.Join("platform.json"); filePath.Exist() {
+			if f, err := filePath.Open(); err == nil {
+				defer f.Close()
+				if err = json.NewDecoder(f).Decode(&platform); err == nil {
+					slog.Debug("loaded override from platform.json file", "file", filePath.String(), "platform", platform)
+				} else {
+					slog.Warn("failed to decode override platform.json file", "file", filePath.String(), "error", err)
+				}
 			} else {
-				slog.Warn("failed to decode override platform.json file", "file", filePath.String(), "error", err)
+				slog.Warn("failed to open override platform.json file", "file", filePath.String(), "error", err)
 			}
-		} else {
-			slog.Warn("failed to open override platform.json file", "file", filePath.String(), "error", err)
 		}
 	}
 

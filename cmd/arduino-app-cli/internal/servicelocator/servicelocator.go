@@ -99,6 +99,6 @@ var (
 	})
 
 	GetPlatform = sync.OnceValue(func() platform.Platform {
-		return platform.GetPlatform(globalConfig)
+		return platform.GetPlatform(globalConfig.AssetsDir())
 	})
 )

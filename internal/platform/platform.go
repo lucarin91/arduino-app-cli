@@ -35,8 +35,8 @@ type GpioPin struct {
 
 type Platform struct {
 	FQBN        string `json:"fqbn"`
-	PlatformID  string `json:"platform_id"`
-	CompileJobs int32  `json:"compile_jobs"`
+	PlatformID  string `json:"-"`
+	CompileJobs int32  `json:"-"`
 	Linux       struct {
 		UserLeds   paths.PathList
 		StatusLeds paths.PathList
@@ -93,11 +93,13 @@ func GetPlatform(cfg config.Configuration) Platform {
 	if filePath := cfg.DataDir().Join("platform.json"); filePath.Exist() {
 		if f, err := filePath.Open(); err == nil {
 			defer f.Close()
-			if err = json.NewDecoder(f).Decode(&platform); err != nil {
-				slog.Warn("failed to decode override platform.json", "error", err)
+			if err = json.NewDecoder(f).Decode(&platform); err == nil {
+				slog.Debug("loaded override from platform.json file", "file", filePath.String(), "platform", platform)
 			} else {
-				slog.Debug("loaded override from platform.json from file", "file", filePath.String())
+				slog.Warn("failed to decode override platform.json file", "file", filePath.String(), "error", err)
 			}
+		} else {
+			slog.Warn("failed to open override platform.json file", "file", filePath.String(), "error", err)
 		}
 	}
 

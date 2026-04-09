@@ -34,6 +34,7 @@ import (
 	"go.bug.st/f"
 
 	"github.com/arduino/arduino-app-cli/internal/api/edgeimpulse"
+	"github.com/arduino/arduino-app-cli/internal/orchestrator"
 	"github.com/arduino/arduino-app-cli/internal/orchestrator/app"
 	"github.com/arduino/arduino-app-cli/internal/orchestrator/bricksindex"
 	"github.com/arduino/arduino-app-cli/internal/orchestrator/config"
@@ -181,7 +182,12 @@ func AIModelDelete(ctx context.Context, dockerClient command.Cli, cfg config.Con
 	}
 
 	if runningAppReference != nil {
-		StopApp(ctx, dockerClient, platform, *runningAppReference)
+		for message := range StopApp(ctx, dockerClient, platform, *runningAppReference) {
+			switch message.GetType() {
+			case orchestrator.ErrorType:
+				slog.Warn("Error while stopping the app using the model", "app", runningAppReference.Name, "error", message.GetError())
+			}
+		}
 	}
 
 	if res.ModelFolderPath == nil {

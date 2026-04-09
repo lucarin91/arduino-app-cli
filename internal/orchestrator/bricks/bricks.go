@@ -180,33 +180,19 @@ func (s *Service) BricksDetails(id string, idProvider *app.IDProvider,
 		return BrickDetailsResult{}, ErrBrickNotFound
 	}
 
-	readme, err := brick.GetReadmeFile()
-	if err != nil {
-		return BrickDetailsResult{}, fmt.Errorf("cannot open docs for brick %s: %w", id, err)
-	}
+	readme, _ := brick.GetReadmeFile()
+	apiDocsPath, _ := brick.GetApiDocPath()
+	examplePaths, _ := brick.GetExamplesPath()
 
-	apiDocsPath, found := brick.GetApiDocPath()
-	if !found {
-		return BrickDetailsResult{}, fmt.Errorf("cannot open api-docs for brick %s", id)
-	}
-
-	examplePaths, err := brick.GetExamplesPath()
-	if err != nil {
-		return BrickDetailsResult{}, fmt.Errorf("cannot open code examples for brick %s: %w", id, err)
-	}
 	codeExamples := f.Map(examplePaths, func(p *paths.Path) CodeExample {
 		return CodeExample{
 			Path: p.String(),
 		}
 	})
 
-	usedByApps, err := getUsedByApps(cfg, brick.ID, idProvider)
-	if err != nil {
-		return BrickDetailsResult{}, fmt.Errorf("unable to get used by apps: %w", err)
-	}
+	usedByApps, _ := getUsedByApps(cfg, brick.ID, idProvider)
 
 	variables, configVariables := getBrickConfigVariableDetails(brick)
-
 	return BrickDetailsResult{
 		ID:           id,
 		Name:         brick.Name,

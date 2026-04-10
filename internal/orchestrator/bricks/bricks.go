@@ -185,17 +185,32 @@ func (s *Service) BricksDetails(id string, idProvider *app.IDProvider,
 		return BrickDetailsResult{}, ErrBrickNotFound
 	}
 
-	readme, _ := brick.GetReadmeFile()
-	apiDocsPath, _ := brick.GetApiDocPath()
-	examplePaths, _ := brick.GetExamplesPath()
+	readme, err := brick.GetReadmeFile()
+	if err != nil {
+		slog.Warn("cannot open readme for brick", "brickID", brick.ID, "error", err.Error())
+	}
 
+	var apiDocsPath string
+	if p, ok := brick.GetApiDocPath(); ok {
+		apiDocsPath = p.String()
+	} else {
+		slog.Warn("cannot load API doc", "brickID", brick.ID)
+	}
+
+	examplePaths, err := brick.GetExamplesPath()
+	if err != nil {
+		slog.Warn("cannot load example for brick", "brickID", brick.ID, "error", err.Error())
+	}
 	codeExamples := f.Map(examplePaths, func(p *paths.Path) CodeExample {
 		return CodeExample{
 			Path: p.String(),
 		}
 	})
 
-	usedByApps, _ := getUsedByApps(cfg, brick.ID, idProvider)
+	usedByApps, err := getUsedByApps(cfg, brick.ID, idProvider)
+	if err != nil {
+		slog.Warn("unable to get used by apps for brick", "brickID", brick.ID, "error", err.Error())
+	}
 
 	variables, configVariables := getBrickConfigVariableDetails(brick)
 	return BrickDetailsResult{
@@ -208,7 +223,7 @@ func (s *Service) BricksDetails(id string, idProvider *app.IDProvider,
 		Status:       "installed", // For now every Arduino brick are installed
 		Variables:    variables,
 		Readme:       readme,
-		ApiDocsPath:  apiDocsPath.String(),
+		ApiDocsPath:  apiDocsPath,
 		CodeExamples: codeExamples,
 		UsedByApps:   usedByApps,
 		CompatibleModels: f.Map(s.modelsIndex.GetModelsByBrick(brick.ID), func(m modelsindex.AIModel) AIModel {

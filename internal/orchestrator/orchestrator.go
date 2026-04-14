@@ -1199,49 +1199,63 @@ func compileUploadSketch(
 // migration_to_platform_gt_0_54_1 removes the Arduino_RouterBridge library from the sketch profile to allow automatic update of the library.
 // This is needed by the platform 0.55 will need a new Arduino_RouterBridge library to allow Serial output redirection to Monitor.
 func migration_to_platform_gt_0_54_1(ctx context.Context, platform platform.Platform, app app.ArduinoApp) (bool, error) {
-	getInstalledPlatformVersion := func() (*semver.Version, error) {
-		logrus.SetLevel(logrus.ErrorLevel) // Reduce the log level of arduino-cli
-		srv := commands.NewArduinoCoreServer()
-		if err := SetArduinoCliConfig(ctx, srv); err != nil {
-			return nil, err
-		}
-		var inst *rpc.Instance
-		if resp, err := srv.Create(ctx, &rpc.CreateRequest{}); err != nil {
-			return nil, err
-		} else {
-			inst = resp.GetInstance()
-		}
-		defer func() {
-			_, _ = srv.Destroy(ctx, &rpc.DestroyRequest{Instance: inst})
-		}()
-
-		if err := srv.Init(
-			&rpc.InitRequest{Instance: inst},
-			commands.InitStreamResponseToCallbackFunction(ctx, func(r *rpc.InitResponse) error {
-				slog.Debug("Arduino init instance", slog.String("instance", r.String()))
-				return nil
-			}),
-		); err != nil {
-			return nil, err
-		}
-
-		info, err := srv.BoardDetails(ctx, &rpc.BoardDetailsRequest{
-			Instance: inst,
-			Fqbn:     platform.FQBN,
-		})
-		if err != nil {
-			return nil, err
-		}
-		return semver.Parse(info.GetVersion())
+	logrus.SetLevel(logrus.ErrorLevel) // Reduce the log level of arduino-cli
+	srv := commands.NewArduinoCoreServer()
+	if err := SetArduinoCliConfig(ctx, srv); err != nil {
+		return false, err
 	}
 
-	v, err := getInstalledPlatformVersion()
+	var inst *rpc.Instance
+	if resp, err := srv.Create(ctx, &rpc.CreateRequest{}); err != nil {
+		return false, err
+	} else {
+		inst = resp.GetInstance()
+	}
+	defer func() {
+		_, _ = srv.Destroy(ctx, &rpc.DestroyRequest{Instance: inst})
+	}()
+
+	sketchPath, ok := app.GetSketchPath()
+	if !ok {
+		return false, fmt.Errorf("no sketch path found in the Arduino app")
+	}
+	sketchResp, err := srv.LoadSketch(ctx, &rpc.LoadSketchRequest{SketchPath: sketchPath.String()})
+	if err != nil {
+		return false, err
+	}
+
+	sketch := sketchResp.GetSketch()
+	platforms := sketch.GetDefaultProfile().GetPlatforms()
+	if slices.ContainsFunc(platforms, func(p *rpc.ProfilePlatformReference) bool {
+		return p.GetId() == platform.PlatformID && p.GetVersion() != ""
+	}) {
+		return false, nil
+	}
+
+	if err := srv.Init(
+		&rpc.InitRequest{Instance: inst},
+		commands.InitStreamResponseToCallbackFunction(ctx, func(r *rpc.InitResponse) error {
+			return nil
+		}),
+	); err != nil {
+		return false, err
+	}
+
+	boardInfo, err := srv.BoardDetails(ctx, &rpc.BoardDetailsRequest{
+		Instance: inst,
+		Fqbn:     platform.FQBN,
+	})
+	if err != nil {
+		return false, err
+	}
+
+	platformVersion, err := semver.Parse(boardInfo.GetVersion())
 	if err != nil {
 		return false, fmt.Errorf("unable to get installed platform version: %w", err)
 	}
-	slog.Debug("Installed platform version", slog.Any("version", v.String()))
+	slog.Debug("Installed platform version", "version", platformVersion.String())
 
-	if v.GreaterThan(semver.MustParse("0.54.1")) {
+	if platformVersion.GreaterThan(semver.MustParse("0.54.1")) {
 		libs, err := ListSketchLibraries(ctx, app)
 		if err != nil {
 			return false, fmt.Errorf("unable to list sketch libraries: %w", err)

@@ -13,6 +13,8 @@ replace (
 	github.com/docker/docker => github.com/docker/docker v28.3.2+incompatible
 )
 
+replace github.com/arduino/arduino-cli => github.com/cmaglie/arduino-cli v0.0.0-20260414090850-45d9f15a0723
+
 require (
 	github.com/Andrew-M-C/go.emoji v1.1.4
 	github.com/arduino/arduino-cli v1.4.2-rc.1.0.20260413161101-5af57687fe0a

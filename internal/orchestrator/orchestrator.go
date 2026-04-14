@@ -177,12 +177,12 @@ func StartApp(
 				return
 			}
 
-			if ok, err := migration_to_platform_gt_0_54_1(ctx, platform, appToStart); err != nil {
+			if ok, err := migrateRemoveRouterBridgeIfNeeded(ctx, platform, appToStart); err != nil {
 				if !yield(StreamMessage{data: "Failed to apply app migration for platform arduino:zephyr >0.54.1. Error: " + err.Error()}) {
 					return
 				}
 			} else if ok {
-				if !yield(StreamMessage{data: "Applied app migration for platform arduino:zephyr >0.54.1. Arduino_RouterBridge is now part of the platform and shouldn't explicit specify"}) {
+				if !yield(StreamMessage{data: "Applied app migration for platform arduino:zephyr >0.54.1. Arduino_RouterBridge is now part of the platform and shouldn't be explicitly specified"}) {
 					return
 				}
 			}
@@ -1196,9 +1196,10 @@ func compileUploadSketch(
 	}, stream)
 }
 
-// migration_to_platform_gt_0_54_1 removes the Arduino_RouterBridge library from the sketch profile to allow automatic update of the library.
+// migrateRemoveRouterBridgeIfNeeded removes the Arduino_RouterBridge library from the sketch profile to allow automatic update of the library.
 // This is needed by the platform 0.55 will need a new Arduino_RouterBridge library to allow Serial output redirection to Monitor.
-func migration_to_platform_gt_0_54_1(ctx context.Context, platform platform.Platform, app app.ArduinoApp) (bool, error) {
+// The migration is applied only if the platform in the profile doesn't specify a version.
+func migrateRemoveRouterBridgeIfNeeded(ctx context.Context, platform platform.Platform, app app.ArduinoApp) (bool, error) {
 	logrus.SetLevel(logrus.ErrorLevel) // Reduce the log level of arduino-cli
 	srv := commands.NewArduinoCoreServer()
 	if err := SetArduinoCliConfig(ctx, srv); err != nil {
@@ -1229,6 +1230,7 @@ func migration_to_platform_gt_0_54_1(ctx context.Context, platform platform.Plat
 	if slices.ContainsFunc(platforms, func(p *rpc.ProfilePlatformReference) bool {
 		return p.GetId() == platform.PlatformID && p.GetVersion() != ""
 	}) {
+		slog.Debug("skip migration if the platform in the profiles specifies a version")
 		return false, nil
 	}
 

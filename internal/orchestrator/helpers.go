@@ -240,7 +240,7 @@ func SetArduinoCliConfig(ctx context.Context, cli rpc.ArduinoCoreServiceServer) 
 	}
 
 	// Set the additional urls via ARDUINO_BOARD_MANAGER_ADDITIONAL_URLS env var
-	if urls, err := os.LookupEnv("ARDUINO_BOARD_MANAGER_ADDITIONAL_URLS"); err {
+	if urls, ok := os.LookupEnv("ARDUINO_BOARD_MANAGER_ADDITIONAL_URLS"); ok {
 		_, err := cli.SettingsSetValue(ctx, &rpc.SettingsSetValueRequest{
 			Key:          "board_manager.additional_urls",
 			EncodedValue: urls,

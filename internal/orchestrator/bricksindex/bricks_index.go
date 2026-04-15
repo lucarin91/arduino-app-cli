@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"iter"
+	"log/slog"
 	"os"
 	"slices"
 	"strings"
@@ -78,13 +79,14 @@ func (v BrickVariable) IsRequired() bool {
 }
 
 type Brick struct {
-	ID                        string                    `yaml:"id"`
-	Name                      string                    `yaml:"name"`
-	Description               string                    `yaml:"description"`
-	SupportedBoards           []string                  `yaml:"supported_boards,omitempty"`
-	Category                  string                    `yaml:"category,omitempty"`
-	RequiresDisplay           string                    `yaml:"requires_display,omitempty"`
-	RequireContainer          bool                      `yaml:"require_container"`
+	ID              string   `yaml:"id"`
+	Name            string   `yaml:"name"`
+	Description     string   `yaml:"description"`
+	SupportedBoards []string `yaml:"supported_boards,omitempty"`
+	Category        string   `yaml:"category,omitempty"`
+	RequiresDisplay string   `yaml:"requires_display,omitempty"`
+	// Deprecated : the field `require_container` is deprecated, you can remove it from the brick config. It will be ignored if present.
+	RequireContainer          bool                      `yaml:"require_container"` // Deprecated
 	RequireModel              bool                      `yaml:"require_model"`
 	Variables                 []BrickVariable           `yaml:"variables,omitempty"`
 	Ports                     []string                  `yaml:"ports,omitempty"`
@@ -187,6 +189,9 @@ func Load(platform platform.Platform, path *paths.Path) (*BricksIndex, error) {
 		namespace, brickName, err := parseBrickID(yamlIndex.Bricks[i].ID)
 		if err != nil {
 			return nil, err
+		}
+		if yamlIndex.Bricks[i].RequireContainer {
+			slog.Warn("the field `require_container` is deprecated. You can remove it from the brick config", "brick_id", yamlIndex.Bricks[i].ID)
 		}
 		yamlIndex.Bricks[i].Source = "Arduino"
 		yamlIndex.Bricks[i].FullPath = path

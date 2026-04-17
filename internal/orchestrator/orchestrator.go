@@ -158,7 +158,7 @@ func StartApp(
 			return
 		}
 
-		if err := setStatusLeds(platform, LedTriggerNone); err != nil {
+		if err := setLedsToUserControlledMode(platform); err != nil {
 			slog.Debug("unable to set status leds", slog.String("error", err.Error()))
 		}
 
@@ -339,7 +339,7 @@ func stopAppWithCmd(ctx context.Context, docker command.Cli, platform platform.P
 		if !yield(StreamMessage{data: message}) {
 			return
 		}
-		if err := setStatusLeds(platform, LedTriggerDefault); err != nil {
+		if err := restoreLedsState(platform); err != nil {
 			slog.Debug("unable to set status leds", slog.String("error", err.Error()))
 		}
 
@@ -1032,21 +1032,13 @@ func getCurrentUser() string {
 
 // addLedControl adds bindings for led control if the paths exist.
 func addLedControl(platform platform.Platform, volumes []volume) []volume {
-	for _, path := range platform.Linux.UserLeds {
-		if path.Exist() {
+	for _, led := range platform.Linux.BoardLeds {
+
+		if led.Exist() {
 			volumes = append(volumes, volume{
 				Type:   "bind",
-				Source: path.String(),
-				Target: path.String(),
-			})
-		}
-	}
-	for _, path := range platform.Linux.StatusLeds {
-		if path.Exist() {
-			volumes = append(volumes, volume{
-				Type:   "bind",
-				Source: path.String(),
-				Target: path.String(),
+				Source: led.String(),
+				Target: led.String(),
 			})
 		}
 	}

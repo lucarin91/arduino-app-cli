@@ -198,21 +198,45 @@ func GetCustomErrorFomDockerEvent(message string) error {
 	return nil
 }
 
-type LedTrigger string
+type ledTarget string
 
 const (
-	LedTriggerNone    LedTrigger = "none"
-	LedTriggerDefault LedTrigger = "default"
+	ledTriggerTarget    ledTarget = "trigger"
+	ledBrightnessTarget ledTarget = "brightness"
 )
 
-func setStatusLeds(platform platform.Platform, trigger LedTrigger) error {
-	for _, ledPath := range platform.Linux.StatusLeds {
-		ledPath = ledPath.Join("trigger")
-		if !ledPath.Exist() {
-			return fmt.Errorf("LED path %s does not exist", ledPath)
+const (
+	noneTrigger    string = "none"
+	defaultTrigger string = "default"
+)
+
+func setLeds(ledPath *paths.Path, target ledTarget, value string) error {
+	ledPath = ledPath.Join(string(target))
+	if !ledPath.Exist() {
+		return fmt.Errorf("LED path %s does not exist", ledPath)
+	}
+	if err := ledPath.WriteFile([]byte(value)); err != nil {
+		return fmt.Errorf("failed to set LED %s to %s: %w", ledPath, target, err)
+	}
+	return nil
+}
+
+func setLedsToUserControlledMode(platform platform.Platform) error {
+	for _, led := range platform.Linux.BoardLeds {
+		if err := setLeds(led, ledTriggerTarget, noneTrigger); err != nil {
+			return err
 		}
-		if err := ledPath.WriteFile([]byte(trigger)); err != nil {
-			return fmt.Errorf("failed to set LED %s to %s: %w", ledPath, trigger, err)
+	}
+	return nil
+}
+
+func restoreLedsState(platform platform.Platform) error {
+	for _, led := range platform.Linux.BoardLeds {
+		if err := setLeds(led, ledBrightnessTarget, string("0")); err != nil {
+			return err
+		}
+		if err := setLeds(led, ledTriggerTarget, defaultTrigger); err != nil {
+			return err
 		}
 	}
 	return nil

@@ -396,6 +396,7 @@ services:
 
 		// Reload index after adding compose file.
 		bricksIndex, err := bricksindex.Load(platform.GetPlatform(nil), cfg.AssetsDir())
+		require.NoError(t, err)
 
 		// Run the provision function to generate the main compose file
 		err = generateMainComposeFile(&app, bricksIndex, servicesIndex, "app-bricks:python-apps-base:dev-latest", cfg, env, unkownPlatform, devices)
@@ -456,6 +457,7 @@ services:
 
 		// Reload index after adding compose file.
 		bricksIndex, err := bricksindex.Load(platform.GetPlatform(nil), cfg.AssetsDir())
+		require.NoError(t, err)
 
 		// Run the provision function to generate the main compose file
 		err = generateMainComposeFile(&app, bricksIndex, servicesIndex, "app-bricks:python-apps-base:dev-latest", cfg, env, unkownPlatform, devices)

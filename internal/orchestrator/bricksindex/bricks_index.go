@@ -200,10 +200,12 @@ func Load(platform platform.Platform, path *paths.Path) (*BricksIndex, error) {
 		yamlIndex.Bricks[i].DocsAPIPath = path.Join("api-docs", namespace, "app_bricks", brickName, "API.md")
 
 		// Load main compose file and, if present, platform-specific compose files
-		composePath := path.Join("compose", namespace, brickName)
-		baseCompose := composePath.Join("brick_compose.yaml")
-		specificCompose := composePath.Join(fmt.Sprintf("brick_compose.%s.yaml", platform.BoardName))
-		if specificCompose.Exist() {
+		var (
+			composePath     = path.Join("compose", namespace, brickName)
+			baseCompose     = composePath.Join("brick_compose.yaml")
+			specificCompose = composePath.Join(fmt.Sprintf("brick_compose.%s.yaml", platform.BoardName))
+		)
+		if platform.BoardName != "" && specificCompose.Exist() {
 			yamlIndex.Bricks[i].ComposeFile = specificCompose
 		} else if baseCompose.Exist() {
 			yamlIndex.Bricks[i].ComposeFile = baseCompose

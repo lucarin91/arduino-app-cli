@@ -195,10 +195,21 @@ func Load(platform platform.Platform, path *paths.Path) (*BricksIndex, error) {
 		}
 		yamlIndex.Bricks[i].Source = "Arduino"
 		yamlIndex.Bricks[i].FullPath = path
-		yamlIndex.Bricks[i].ComposeFile = path.Join("compose", namespace, brickName, "brick_compose.yaml")
 		yamlIndex.Bricks[i].ReadmeFile = path.Join("docs", namespace, brickName, "README.md")
 		yamlIndex.Bricks[i].ExamplesPath = path.Join("examples", namespace, brickName)
 		yamlIndex.Bricks[i].DocsAPIPath = path.Join("api-docs", namespace, "app_bricks", brickName, "API.md")
+
+		// Load main compose file and, if present, platform-specific compose files
+		var (
+			composePath     = path.Join("compose", namespace, brickName)
+			baseCompose     = composePath.Join("brick_compose.yaml")
+			specificCompose = composePath.Join(fmt.Sprintf("brick_compose.%s.yaml", platform.BoardName))
+		)
+		if platform.BoardName != "" && specificCompose.Exist() {
+			yamlIndex.Bricks[i].ComposeFile = specificCompose
+		} else if baseCompose.Exist() {
+			yamlIndex.Bricks[i].ComposeFile = baseCompose
+		}
 	}
 
 	yamlIndex.Bricks = slices.DeleteFunc(yamlIndex.Bricks, func(brick Brick) bool {

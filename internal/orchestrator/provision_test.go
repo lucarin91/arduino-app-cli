@@ -394,6 +394,10 @@ services:
 			HasVideoDevice: true,
 		}
 
+		// Reload index after adding compose file.
+		bricksIndex, err := bricksindex.Load(platform.GetPlatform(nil), cfg.AssetsDir())
+		require.NoError(t, err)
+
 		// Run the provision function to generate the main compose file
 		err = generateMainComposeFile(&app, bricksIndex, servicesIndex, "app-bricks:python-apps-base:dev-latest", cfg, env, unkownPlatform, devices)
 		require.NoError(t, err, "Failed to generate main compose file")
@@ -450,6 +454,11 @@ services:
 			HasSoundDevice: false,
 			HasVideoDevice: true,
 		}
+
+		// Reload index after adding compose file.
+		bricksIndex, err := bricksindex.Load(platform.GetPlatform(nil), cfg.AssetsDir())
+		require.NoError(t, err)
+
 		// Run the provision function to generate the main compose file
 		err = generateMainComposeFile(&app, bricksIndex, servicesIndex, "app-bricks:python-apps-base:dev-latest", cfg, env, unkownPlatform, devices)
 		require.NoError(t, err, "Failed to generate main compose file")

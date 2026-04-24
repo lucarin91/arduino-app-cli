@@ -102,6 +102,6 @@ func (r defaultAppResult) String() string {
 	return fmt.Sprintf("Default app: %s (%s)", r.App.Name, r.App.FullPath)
 }
 
-func (r defaultAppResult) Data() interface{} {
+func (r defaultAppResult) Data() any {
 	return r
 }

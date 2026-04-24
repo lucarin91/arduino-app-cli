@@ -88,6 +88,6 @@ func (r brickDetailsResult) String() string {
 	return b.String()
 }
 
-func (r brickDetailsResult) Data() interface{} {
+func (r brickDetailsResult) Data() any {
 	return r.BrickDetailsResult
 }

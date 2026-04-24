@@ -63,6 +63,6 @@ func (r brickListResult) String() string {
 	return t.Render()
 }
 
-func (r brickListResult) Data() interface{} {
+func (r brickListResult) Data() any {
 	return r
 }

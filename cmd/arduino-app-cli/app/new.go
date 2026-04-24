@@ -112,6 +112,6 @@ func (r createAppResult) String() string {
 	return fmt.Sprintf("%s: %s (%s)", r.Message, r.Path, r.Result)
 }
 
-func (r createAppResult) Data() interface{} {
+func (r createAppResult) Data() any {
 	return r
 }

@@ -259,7 +259,7 @@ func TestUpdateBrick(t *testing.T) {
 		brickId := "arduino:brick-with-custom-model"
 		req := BrickCreateUpdateRequest{
 			ID:    brickId,
-			Model: f.Ptr(modelId),
+			Model: new(modelId),
 			Variables: map[string]string{
 				"EI_OBJ_DETECTION_MODEL": modelId,
 				"CUSTOM_MODEL_PATH":      modelPath,

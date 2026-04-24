@@ -87,6 +87,6 @@ func (r stopAppResult) String() string {
 	return fmt.Sprintf("✓ App '%q stopped successfully.", r.AppName)
 }
 
-func (r stopAppResult) Data() interface{} {
+func (r stopAppResult) Data() any {
 	return r
 }

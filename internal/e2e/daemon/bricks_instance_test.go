@@ -27,7 +27,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"go.bug.st/f"
 
 	"github.com/arduino/arduino-app-cli/internal/api/models"
 	"github.com/arduino/arduino-app-cli/internal/e2e/client"
@@ -41,14 +40,14 @@ const (
 var (
 	expectedModelInfo = []client.AIModel{
 		{
-			Id:          f.Ptr("mobilenet-image-classification"),
-			Name:        f.Ptr("General purpose image classification"),
-			Description: f.Ptr("General purpose image classification model based on MobileNetV2. This model is trained on the ImageNet dataset and can classify images into 1000 categories."),
+			Id:          new("mobilenet-image-classification"),
+			Name:        new("General purpose image classification"),
+			Description: new("General purpose image classification model based on MobileNetV2. This model is trained on the ImageNet dataset and can classify images into 1000 categories."),
 		},
 		{
-			Id:          f.Ptr("person-classification"),
-			Name:        f.Ptr("Person classification"),
-			Description: f.Ptr("Person classification model based on WakeVision dataset. This model is trained to classify images into two categories: person and not-person."),
+			Id:          new("person-classification"),
+			Name:        new("Person classification"),
+			Description: new("Person classification model based on WakeVision dataset. This model is trained to classify images into two categories: person and not-person."),
 		}}
 )
 
@@ -56,11 +55,11 @@ func setupTestApp(t *testing.T) (*client.CreateAppResp, *client.ClientWithRespon
 	httpClient := GetHttpclient(t)
 	createResp, err := httpClient.CreateAppWithResponse(
 		t.Context(),
-		&client.CreateAppParams{SkipSketch: f.Ptr(true)},
+		&client.CreateAppParams{SkipSketch: new(true)},
 		client.CreateAppRequest{
-			Icon:        f.Ptr("💻"),
+			Icon:        new("💻"),
 			Name:        "test-app",
-			Description: f.Ptr("My app description"),
+			Description: new("My app description"),
 		},
 		func(ctx context.Context, req *http.Request) error { return nil },
 	)
@@ -72,7 +71,7 @@ func setupTestApp(t *testing.T) (*client.CreateAppResp, *client.ClientWithRespon
 		t.Context(),
 		*createResp.JSON201.Id,
 		ImageClassifactionBrickID,
-		client.BrickCreateUpdateRequest{Model: f.Ptr("mobilenet-image-classification")},
+		client.BrickCreateUpdateRequest{Model: new("mobilenet-image-classification")},
 		func(ctx context.Context, req *http.Request) error { return nil },
 	)
 	require.NoError(t, err)
@@ -209,7 +208,7 @@ func TestUpsertAppBrickInstance(t *testing.T) {
 			t.Context(),
 			*createResp.JSON201.Id,
 			ImageClassifactionBrickID,
-			client.BrickCreateUpdateRequest{Model: f.Ptr("mobilenet-image-classification")},
+			client.BrickCreateUpdateRequest{Model: new("mobilenet-image-classification")},
 			func(ctx context.Context, req *http.Request) error { return nil },
 		)
 		require.NoError(t, err)
@@ -233,7 +232,7 @@ func TestUpsertAppBrickInstance(t *testing.T) {
 			t.Context(),
 			*createResp.JSON201.Id,
 			ImageClassifactionBrickID,
-			client.BrickCreateUpdateRequest{Model: f.Ptr("non-existent-model")},
+			client.BrickCreateUpdateRequest{Model: new("non-existent-model")},
 		)
 		require.NoError(t, err)
 		require.Equal(t, http.StatusInternalServerError, resp.StatusCode)
@@ -333,7 +332,7 @@ func TestUpdateAppBrickInstance(t *testing.T) {
 			*createResp.JSON201.Id,
 			ImageClassifactionBrickID,
 			client.BrickCreateUpdateRequest{
-				Model:     f.Ptr("person-classification"),
+				Model:     new("person-classification"),
 				Variables: &map[string]string{"CUSTOM_MODEL_PATH": "overidden"},
 			},
 			func(ctx context.Context, req *http.Request) error { return nil },
@@ -358,7 +357,7 @@ func TestUpdateAppBrickInstance(t *testing.T) {
 			t.Context(),
 			*createResp.JSON201.Id,
 			ImageClassifactionBrickID,
-			client.BrickCreateUpdateRequest{Model: f.Ptr("mobilenet-image-classification")},
+			client.BrickCreateUpdateRequest{Model: new("mobilenet-image-classification")},
 			func(ctx context.Context, req *http.Request) error { return nil },
 		)
 		require.NoError(t, err)
@@ -381,7 +380,7 @@ func TestUpdateAppBrickInstance(t *testing.T) {
 			t.Context(),
 			*createResp.JSON201.Id,
 			ImageClassifactionBrickID,
-			client.BrickCreateUpdateRequest{Model: f.Ptr("non-existent-model")},
+			client.BrickCreateUpdateRequest{Model: new("non-existent-model")},
 		)
 		require.NoError(t, err)
 		require.Equal(t, http.StatusInternalServerError, resp.StatusCode)

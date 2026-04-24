@@ -119,7 +119,7 @@ func (r importAppResult) String() string {
 	return fmt.Sprintf("✓ Import successful.\n  App ID: %s", appIDBytes)
 }
 
-func (r importAppResult) Data() interface{} {
+func (r importAppResult) Data() any {
 	appIDBytes, err := base64.RawURLEncoding.DecodeString(r.AppID)
 	if err != nil {
 		return r

@@ -423,7 +423,7 @@ type DSPGroupItem struct {
 	InvalidText *string `json:"invalidText,omitempty"`
 
 	// Items Recursive definition for items of a parameter with type 'array'.
-	Items *map[string]interface{} `json:"items,omitempty"`
+	Items *map[string]any `json:"items,omitempty"`
 
 	// MaxVal Maximum value for parameters of type 'int' or 'float'.
 	MaxVal *float32 `json:"maxVal,omitempty"`
@@ -440,7 +440,7 @@ type DSPGroupItem struct {
 	Placeholder *string `json:"placeholder,omitempty"`
 
 	// Properties Recursive definition for a parameter with type 'object'.
-	Properties *map[string]interface{} `json:"properties,omitempty"`
+	Properties *map[string]any `json:"properties,omitempty"`
 	Readonly   bool                    `json:"readonly"`
 	Required   bool                    `json:"required"`
 
@@ -475,7 +475,7 @@ type DSPGroupItem struct {
 	Type string `json:"type"`
 
 	// Valid Valid values for parameter.
-	Valid *[]map[string]interface{} `json:"valid,omitempty"`
+	Valid *[]map[string]any `json:"valid,omitempty"`
 	Value *string                   `json:"value,omitempty"`
 }
 
@@ -938,7 +938,7 @@ type Job struct {
 	Key string `json:"key"`
 
 	// Metadata Structured job metadata
-	Metadata *map[string]interface{} `json:"metadata,omitempty"`
+	Metadata *map[string]any `json:"metadata,omitempty"`
 
 	// Started When the job was started.
 	Started *time.Time `json:"started,omitempty"`
@@ -1051,7 +1051,7 @@ type Project struct {
 	Logo *string `json:"logo,omitempty"`
 
 	// Metadata Metadata about the project
-	Metadata map[string]interface{} `json:"metadata"`
+	Metadata map[string]any `json:"metadata"`
 	Name     string                 `json:"name"`
 
 	// Owner User or organization that owns the project
@@ -1254,7 +1254,7 @@ type ProjectInfoResponse struct {
 	} `json:"computeTime"`
 
 	// CsvImportConfig Config file specifying how to process CSV files.
-	CsvImportConfig        *map[string]interface{} `json:"csvImportConfig,omitempty"`
+	CsvImportConfig        *map[string]any `json:"csvImportConfig,omitempty"`
 	DataSummary            ProjectDataSummary      `json:"dataSummary"`
 	DataSummaryPerCategory struct {
 		PostProcessing ProjectDataSummary `json:"postProcessing"`
@@ -1479,7 +1479,7 @@ type UpdateProjectRequest struct {
 	ComputeTimeLimitM *int `json:"computeTimeLimitM,omitempty"`
 
 	// CsvImportConfig Config file specifying how to process CSV files. (set to null to clear the config)
-	CsvImportConfig *map[string]interface{} `json:"csvImportConfig,omitempty"`
+	CsvImportConfig *map[string]any `json:"csvImportConfig,omitempty"`
 
 	// DataAcquisitionGridColumnCount Number of grid columns in non-detailed view on data acquisition
 	DataAcquisitionGridColumnCount *int `json:"dataAcquisitionGridColumnCount,omitempty"`
@@ -1556,7 +1556,7 @@ type UpdateProjectRequest struct {
 	Logo *string `json:"logo,omitempty"`
 
 	// Metadata New metadata about the project
-	Metadata *map[string]interface{} `json:"metadata,omitempty"`
+	Metadata *map[string]any `json:"metadata,omitempty"`
 
 	// ModelTestingJobNotificationUids The IDs of users who should be notified when a model testing job is finished.
 	ModelTestingJobNotificationUids *[]int `json:"modelTestingJobNotificationUids,omitempty"`

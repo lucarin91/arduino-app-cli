@@ -86,6 +86,6 @@ func (r destroyAppResult) String() string {
 	return fmt.Sprintf("✓ App '%q destroyed successfully.", r.AppName)
 }
 
-func (r destroyAppResult) Data() interface{} {
+func (r destroyAppResult) Data() any {
 	return r
 }

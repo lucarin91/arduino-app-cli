@@ -54,7 +54,7 @@ func HandleAppStart(
 		}
 
 		var verbose bool
-		if r.URL.Query().Has("verbose") || r.URL.Query().Get("verbose") == "true" {
+		if r.URL.Query().Has("verbose") || r.URL.Query().Get("verbose") == "true" { // nolint:goconst
 			verbose = true
 		}
 

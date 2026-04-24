@@ -275,5 +275,13 @@ func SetArduinoCliConfig(ctx context.Context, cli rpc.ArduinoCoreServiceServer) 
 		}
 	}
 
+	// if _, err := cli.SettingsSetValue(ctx, &rpc.SettingsSetValueRequest{
+	// 	Key:          "logging.level",
+	// 	EncodedValue: "fatal",
+	// 	ValueFormat:  "cli",
+	// }); err != nil {
+	// 	return err
+	// }
+
 	return nil
 }

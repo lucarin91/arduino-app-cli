@@ -1187,13 +1187,14 @@ func compileUploadSketch(
 		return nil
 	}
 
-	stream, _ := commands.UploadToServerStreams(ctx, w, w)
-	return srv.Upload(&rpc.UploadRequest{
+	stream, _ := commands.UploadToServerStreams(ctx, w, nil)
+	err = srv.Upload(&rpc.UploadRequest{
 		Instance:   inst,
 		Fqbn:       platform.FQBN,
 		SketchPath: sketchPath.String(),
 		ImportDir:  buildPath.String(),
 	}, stream)
+	return err
 }
 
 // migrateRemoveRouterBridgeIfNeeded removes the Arduino_RouterBridge library from the sketch profile to allow automatic update of the library.

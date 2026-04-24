@@ -278,7 +278,6 @@ func getAllSupportedBrickImages(bricksIndex *bricksindex.BricksIndex, servicesIn
 		if err != nil {
 			return nil, err
 		}
-
 		result = append(result, images...)
 
 		for _, serviceName := range brick.RequiresServices {
@@ -288,14 +287,13 @@ func getAllSupportedBrickImages(bricksIndex *bricksindex.BricksIndex, servicesIn
 				continue
 			}
 			if serviceComposeFile, ok := service.GetComposeFile(); ok {
-				serviceImages, err := extractImagesFromCompose(serviceComposeFile)
+				images, err := extractImagesFromCompose(serviceComposeFile)
 				if err != nil {
 					return nil, fmt.Errorf("failed to extract images from compose file of service %s required by brick %s: %w", serviceName, brick.ID, err)
 				}
-				images = append(images, serviceImages...)
+				result = append(result, images...)
 			}
 		}
-
 	}
 
 	return f.Uniq(result), nil

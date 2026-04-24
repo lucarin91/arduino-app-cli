@@ -34,6 +34,7 @@ import (
 )
 
 func newRestartCmd(cfg config.Configuration) *cobra.Command {
+	var verbose bool
 	cmd := &cobra.Command{
 		Use:   "restart app_path",
 		Short: "Restart or Start an Arduino App",
@@ -46,14 +47,17 @@ func newRestartCmd(cfg config.Configuration) *cobra.Command {
 			if err != nil {
 				feedback.Fatal(err.Error(), feedback.ErrBadArgument)
 			}
-			return restartHandler(cmd.Context(), cfg, appToStart)
+			return restartHandler(cmd.Context(), cfg, appToStart, verbose)
 		},
 		ValidArgsFunction: completion.ApplicationNames(cfg),
 	}
+
+	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output")
+
 	return cmd
 }
 
-func restartHandler(ctx context.Context, cfg config.Configuration, app app.ArduinoApp) error {
+func restartHandler(ctx context.Context, cfg config.Configuration, app app.ArduinoApp, verbose bool) error {
 	out, _, getResult := feedback.OutputStreams()
 
 	stream := orchestrator.RestartApp(
@@ -67,6 +71,7 @@ func restartHandler(ctx context.Context, cfg config.Configuration, app app.Ardui
 		cfg,
 		servicelocator.GetStaticStore(),
 		servicelocator.GetPlatform(),
+		verbose,
 	)
 	for message := range stream {
 		switch message.GetType() {

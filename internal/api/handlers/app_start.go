@@ -53,6 +53,11 @@ func HandleAppStart(
 			return
 		}
 
+		var verbose bool
+		if r.URL.Query().Has("verbose") || r.URL.Query().Get("verbose") == "true" { // nolint:goconst
+			verbose = true
+		}
+
 		app, err := app.Load(id.ToPath())
 		if err != nil {
 			slog.Error("Unable to parse the app.yaml", slog.String("error", err.Error()), slog.String("path", id.String()))
@@ -75,7 +80,9 @@ func HandleAppStart(
 		type log struct {
 			Message string `json:"message"`
 		}
-		for item := range orchestrator.StartApp(r.Context(), dockerCli, provisioner, modelsIndex, bricksIndex, servicesIndex, app, cfg, staticStore, platform) {
+
+		stream := orchestrator.StartApp(r.Context(), dockerCli, provisioner, modelsIndex, bricksIndex, servicesIndex, app, cfg, staticStore, platform, verbose)
+		for item := range stream {
 			switch item.GetType() {
 			case orchestrator.ProgressType:
 				sseStream.Send(render.SSEEvent{Type: "progress", Data: progress(*item.GetProgress())})

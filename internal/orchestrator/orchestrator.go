@@ -120,6 +120,7 @@ func StartApp(
 	cfg config.Configuration,
 	staticStore *store.StaticStore,
 	platform platform.Platform,
+	verbose bool,
 ) iter.Seq[StreamMessage] {
 	return func(yield func(StreamMessage) bool) {
 		ctx, cancel := context.WithCancel(ctx)
@@ -187,7 +188,7 @@ func StartApp(
 				}
 			}
 
-			if err := compileUploadSketch(ctx, platform, appToStart, sketchCallbackWriter); err != nil {
+			if err := compileUploadSketch(ctx, verbose, platform, appToStart, sketchCallbackWriter); err != nil {
 				yield(StreamMessage{error: err})
 				return
 			}
@@ -454,6 +455,7 @@ func RestartApp(
 	cfg config.Configuration,
 	staticStore *store.StaticStore,
 	platform platform.Platform,
+	verbose bool,
 ) iter.Seq[StreamMessage] {
 	return func(yield func(StreamMessage) bool) {
 		ctx, cancel := context.WithCancel(ctx)
@@ -480,7 +482,7 @@ func RestartApp(
 				}
 			}
 		}
-		startStream := StartApp(ctx, docker, provisioner, modelsIndex, bricksIndex, servicesIndex, appToStart, cfg, staticStore, platform)
+		startStream := StartApp(ctx, docker, provisioner, modelsIndex, bricksIndex, servicesIndex, appToStart, cfg, staticStore, platform, verbose)
 		startStream(yield)
 	}
 }
@@ -515,7 +517,7 @@ func StartDefaultApp(
 	}
 
 	// TODO: we need to stop all other running app before starting the default app.
-	for msg := range StartApp(ctx, docker, provisioner, modelsIndex, bricksIndex, servicesIndex, *app, cfg, staticStore, platform) {
+	for msg := range StartApp(ctx, docker, provisioner, modelsIndex, bricksIndex, servicesIndex, *app, cfg, staticStore, platform, false) {
 		if msg.IsError() {
 			return fmt.Errorf("failed to start app: %w", msg.GetError())
 		}
@@ -1051,6 +1053,7 @@ func addLedControl(platform platform.Platform, volumes []volume) []volume {
 
 func compileUploadSketch(
 	ctx context.Context,
+	verbose bool,
 	platform platform.Platform,
 	arduinoApp app.ArduinoApp,
 	w io.Writer,
@@ -1140,6 +1143,7 @@ func compileUploadSketch(
 			return fmt.Errorf("failed to create build directory: %w", err)
 		}
 	}
+
 	server, getCompileResult := commands.CompilerServerToStreams(ctx, w, w, nil)
 	compileReq := rpc.CompileRequest{
 		Instance:   inst,
@@ -1147,8 +1151,8 @@ func compileUploadSketch(
 		SketchPath: sketchPath.String(),
 		BuildPath:  buildPath.String(),
 		Jobs:       platform.CompileJobs,
+		Verbose:    verbose,
 	}
-
 	err = srv.Compile(&compileReq, server)
 	if err != nil {
 		return err
@@ -1160,14 +1164,15 @@ func compileUploadSketch(
 	// TODO: maybe handle result.GetDiagnostics()
 	boardPlatform := result.GetBoardPlatform()
 	if boardPlatform != nil {
-		slog.Info("Board platform: " + boardPlatform.GetId() + " (" + boardPlatform.GetVersion() + ") in " + boardPlatform.GetInstallDir())
+		_, _ = w.Write([]byte("Board platform: " + boardPlatform.GetId() + " (" + boardPlatform.GetVersion() + ") in " + boardPlatform.GetInstallDir() + "\n"))
 	}
 	buildPlatform := result.GetBuildPlatform()
 	if buildPlatform != nil && buildPlatform.GetInstallDir() != boardPlatform.GetInstallDir() {
-		slog.Info("Build platform: " + buildPlatform.GetId() + " (" + buildPlatform.GetVersion() + ") in " + buildPlatform.GetInstallDir())
+		_, _ = w.Write([]byte("Build platform: " + buildPlatform.GetId() + " (" + buildPlatform.GetVersion() + ") in " + buildPlatform.GetInstallDir() + "\n"))
+
 	}
 	for _, lib := range result.GetUsedLibraries() {
-		slog.Info("Used library " + lib.GetName() + " (" + lib.GetVersion() + ") in " + lib.GetInstallDir())
+		_, _ = w.Write([]byte("Used library " + lib.GetName() + " (" + lib.GetVersion() + ") in " + lib.GetInstallDir() + "\n"))
 	}
 
 	// Support the legacy ram upload option if there isn't the new wait_linux_boot option.

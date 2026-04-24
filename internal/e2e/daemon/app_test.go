@@ -481,7 +481,7 @@ func TestAppStart(t *testing.T) {
 
 	t.Run("InvalidAppId_Fail", func(t *testing.T) {
 		var actualResponseBody models.ErrorResponse
-		resp, err := httpClient.StartApp(t.Context(), malformedAppId)
+		resp, err := httpClient.StartApp(t.Context(), malformedAppId, nil)
 		require.NoError(t, err)
 		defer resp.Body.Close()
 
@@ -495,7 +495,7 @@ func TestAppStart(t *testing.T) {
 
 	t.Run("NonExistentAppId_Fail", func(t *testing.T) {
 		var actualResponseBody models.ErrorResponse
-		resp, err := httpClient.StartApp(t.Context(), noExistingApp)
+		resp, err := httpClient.StartApp(t.Context(), noExistingApp, nil)
 		require.NoError(t, err)
 		defer resp.Body.Close()
 
@@ -675,7 +675,7 @@ func TestAppLogs(t *testing.T) {
 	require.Equal(t, http.StatusCreated, createResp.StatusCode())
 	appWithLogsId := *createResp.JSON201.Id
 
-	startResp, err := httpClient.StartApp(t.Context(), appWithLogsId)
+	startResp, err := httpClient.StartApp(t.Context(), appWithLogsId, nil)
 	require.NoError(t, err)
 	_, err = io.Copy(io.Discard, startResp.Body)
 	require.NoError(t, err, "Failed to unmarshal the JSON error response body")
@@ -913,7 +913,7 @@ func TestGetAppsStatusEvents(t *testing.T) {
 			)
 			require.NoError(t, err)
 			require.Equal(t, http.StatusCreated, createResp.StatusCode())
-			appResponse, err := httpClient.StartAppWithResponse(t.Context(), *createResp.JSON201.Id)
+			appResponse, err := httpClient.StartAppWithResponse(t.Context(), *createResp.JSON201.Id, nil)
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, appResponse.StatusCode())
 		}()

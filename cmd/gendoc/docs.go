@@ -512,7 +512,8 @@ Contains a JSON object with the details of an error.
 			Method:      http.MethodPost,
 			Path:        "/v1/apps/{id}/start",
 			Request: (*struct {
-				ID string `path:"id" description:"application identifier."`
+				ID      string `path:"id" description:"application identifier."`
+				Verbose bool   `query:"verbose" description:"Return a verbose output. Default is false."`
 			})(nil),
 			Description: "Start the application and handles all the operation to start any dependecies. If the app contains a sketch it also flash it in the micro.",
 			Summary:     "Start an existing app/example",

@@ -685,6 +685,12 @@ paths:
         dependecies. If the app contains a sketch it also flash it in the micro.
       operationId: startApp
       parameters:
+      - description: Return a verbose output. Default is false.
+        in: query
+        name: verbose
+        schema:
+          description: Return a verbose output. Default is false.
+          type: boolean
       - description: application identifier.
         in: path
         name: id
@@ -1550,8 +1556,6 @@ components:
       type: object
     AppLocalBrickCreateRequest:
       properties:
-        description:
-          type: string
         name:
           type: string
       type: object
@@ -1672,6 +1676,8 @@ components:
         model:
           type: string
         name:
+          type: string
+        readme:
           type: string
         require_model:
           type: boolean

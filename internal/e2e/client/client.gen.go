@@ -170,8 +170,7 @@ type AppListResponse struct {
 
 // AppLocalBrickCreateRequest defines model for AppLocalBrickCreateRequest.
 type AppLocalBrickCreateRequest struct {
-	Description *string `json:"description,omitempty"`
-	Name        *string `json:"name,omitempty"`
+	Name *string `json:"name,omitempty"`
 }
 
 // AppLocalBrickCreateResponse defines model for AppLocalBrickCreateResponse.
@@ -240,6 +239,7 @@ type BrickInstance struct {
 	Id               *string                `json:"id,omitempty"`
 	Model            *string                `json:"model,omitempty"`
 	Name             *string                `json:"name,omitempty"`
+	Readme           *string                `json:"readme,omitempty"`
 	RequireModel     *bool                  `json:"require_model,omitempty"`
 	Status           *string                `json:"status,omitempty"`
 
@@ -534,6 +534,12 @@ type GetAppLogsParams struct {
 	Nofollow *bool   `form:"nofollow,omitempty" json:"nofollow,omitempty"`
 }
 
+// StartAppParams defines parameters for StartApp.
+type StartAppParams struct {
+	// Verbose Return a verbose output. Default is false.
+	Verbose *bool `form:"verbose,omitempty" json:"verbose,omitempty"`
+}
+
 // ListLibrariesParams defines parameters for ListLibraries.
 type ListLibrariesParams struct {
 	// Search Search term to filter libraries by name, sentence, paragraph.
@@ -783,7 +789,7 @@ type ClientInterface interface {
 	GetAppLogs(ctx context.Context, id string, params *GetAppLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// StartApp request
-	StartApp(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	StartApp(ctx context.Context, id string, params *StartAppParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// StopApp request
 	StopApp(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1204,8 +1210,8 @@ func (c *Client) GetAppLogs(ctx context.Context, id string, params *GetAppLogsPa
 	return c.Client.Do(req)
 }
 
-func (c *Client) StartApp(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewStartAppRequest(c.Server, id)
+func (c *Client) StartApp(ctx context.Context, id string, params *StartAppParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewStartAppRequest(c.Server, id, params)
 	if err != nil {
 		return nil, err
 	}
@@ -2532,7 +2538,7 @@ func NewGetAppLogsRequest(server string, id string, params *GetAppLogsParams) (*
 }
 
 // NewStartAppRequest generates requests for StartApp
-func NewStartAppRequest(server string, id string) (*http.Request, error) {
+func NewStartAppRequest(server string, id string, params *StartAppParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -2555,6 +2561,28 @@ func NewStartAppRequest(server string, id string) (*http.Request, error) {
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Verbose != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "verbose", *params.Verbose, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
 	}
 
 	req, err := http.NewRequest("POST", queryURL.String(), nil)
@@ -3462,7 +3490,7 @@ type ClientWithResponsesInterface interface {
 	GetAppLogsWithResponse(ctx context.Context, id string, params *GetAppLogsParams, reqEditors ...RequestEditorFn) (*GetAppLogsResp, error)
 
 	// StartAppWithResponse request
-	StartAppWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*StartAppResp, error)
+	StartAppWithResponse(ctx context.Context, id string, params *StartAppParams, reqEditors ...RequestEditorFn) (*StartAppResp, error)
 
 	// StopAppWithResponse request
 	StopAppWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*StopAppResp, error)
@@ -4778,8 +4806,8 @@ func (c *ClientWithResponses) GetAppLogsWithResponse(ctx context.Context, id str
 }
 
 // StartAppWithResponse request returning *StartAppResp
-func (c *ClientWithResponses) StartAppWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*StartAppResp, error) {
-	rsp, err := c.StartApp(ctx, id, reqEditors...)
+func (c *ClientWithResponses) StartAppWithResponse(ctx context.Context, id string, params *StartAppParams, reqEditors ...RequestEditorFn) (*StartAppResp, error) {
+	rsp, err := c.StartApp(ctx, id, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}

@@ -180,6 +180,7 @@ func (a *ArduinoPlatformUpdater) UpgradePackages(ctx context.Context, packages [
 	if !a.lock.TryLock() {
 		return update.ErrOperationAlreadyInProgress
 	}
+	defer a.lock.Unlock()
 
 	if len(packages) == 0 {
 		return nil
@@ -206,8 +207,6 @@ func (a *ArduinoPlatformUpdater) UpgradePackages(ctx context.Context, packages [
 		slog.Debug("Task progress", slog.String("task_progress", data))
 		eventCB(update.NewDataEvent(update.UpgradeLineEvent, data))
 	}
-
-	defer a.lock.Unlock()
 
 	eventCB(update.NewDataEvent(update.StartEvent, "Upgrade is starting"))
 

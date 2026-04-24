@@ -69,6 +69,6 @@ func (r configResult) String() string {
 	return b.String()
 }
 
-func (r configResult) Data() interface{} {
+func (r configResult) Data() any {
 	return r.Config
 }

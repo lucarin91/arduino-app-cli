@@ -49,7 +49,7 @@ func TestApps(t *testing.T) {
 	icon := "💻"
 	createResp, err := httpClient.CreateAppWithResponse(
 		t.Context(),
-		&client.CreateAppParams{SkipSketch: f.Ptr(true)},
+		&client.CreateAppParams{SkipSketch: new(true)},
 		client.CreateAppRequest{
 			Icon: &icon,
 			Name: appName,
@@ -85,9 +85,9 @@ func TestCreateApp(t *testing.T) {
 	httpClient := GetHttpclient(t)
 
 	defaultRequestBody := client.CreateAppRequest{
-		Icon:        f.Ptr("🌎"),
+		Icon:        new("🌎"),
 		Name:        "HelloWorld",
-		Description: f.Ptr("My HelloWorld description"),
+		Description: new("My HelloWorld description"),
 	}
 
 	testCases := []struct {
@@ -100,33 +100,33 @@ func TestCreateApp(t *testing.T) {
 		{
 			name: "should return 400 bad request when icon is not a single emoji",
 			parameters: client.CreateAppParams{
-				SkipSketch: f.Ptr(false),
+				SkipSketch: new(false),
 			},
 			body: client.CreateAppRequest{
-				Icon:        f.Ptr("invalid-icon"),
+				Icon:        new("invalid-icon"),
 				Name:        "HelloWorld-2",
-				Description: f.Ptr("My HelloWorld description"),
+				Description: new("My HelloWorld description"),
 			},
 			expectedStatusCode:   http.StatusBadRequest,
-			expectedErrorDetails: f.Ptr("invalid app: icon \"invalid-icon\" is not a valid single emoji"),
+			expectedErrorDetails: new("invalid app: icon \"invalid-icon\" is not a valid single emoji"),
 		},
 		{
 			name: "should create app successfully when icon is empty",
 			parameters: client.CreateAppParams{
-				SkipSketch: f.Ptr(false),
+				SkipSketch: new(false),
 			},
 			body: client.CreateAppRequest{
 				Icon:        nil,
 				Name:        "HelloWorld-2",
-				Description: f.Ptr("My HelloWorld description"),
+				Description: new("My HelloWorld description"),
 			},
 			expectedStatusCode: http.StatusCreated,
-			//expectedErrorDetails: f.Ptr("invalid app: icon cannot be empty"),
+			//expectedErrorDetails: new("invalid app: icon cannot be empty"),
 		},
 		{
 			name: "should return 201 Created on first successful creation",
 			parameters: client.CreateAppParams{
-				SkipSketch: f.Ptr(false),
+				SkipSketch: new(false),
 			},
 			body:               defaultRequestBody,
 			expectedStatusCode: http.StatusCreated,
@@ -134,21 +134,21 @@ func TestCreateApp(t *testing.T) {
 		{
 			name: "should return 409 Conflict when creating a duplicate app",
 			parameters: client.CreateAppParams{
-				SkipSketch: f.Ptr(false),
+				SkipSketch: new(false),
 			},
 			body:                 defaultRequestBody,
 			expectedStatusCode:   http.StatusConflict,
-			expectedErrorDetails: f.Ptr("app already exists"),
+			expectedErrorDetails: new("app already exists"),
 		},
 		{
 			name: "should return 201 Created on successful creation with skip_sketch",
 			parameters: client.CreateAppParams{
-				SkipSketch: f.Ptr(true),
+				SkipSketch: new(true),
 			},
 			body: client.CreateAppRequest{
-				Icon:        f.Ptr("🌎"),
+				Icon:        new("🌎"),
 				Name:        "HelloWorld_3",
-				Description: f.Ptr("My HelloWorld_3 description"),
+				Description: new("My HelloWorld_3 description"),
 			},
 			expectedStatusCode: http.StatusCreated,
 		},
@@ -178,14 +178,14 @@ func TestCreateApp(t *testing.T) {
 func TestCreateAndVerifyAppDetails(t *testing.T) {
 	httpClient := GetHttpclient(t)
 	appToCreate := client.CreateAppRequest{
-		Icon:        f.Ptr("🧪"),
+		Icon:        new("🧪"),
 		Name:        "test-app-for-verification",
-		Description: f.Ptr("A description for the verification test."),
+		Description: new("A description for the verification test."),
 	}
 
 	createResp, err := httpClient.CreateAppWithResponse(
 		t.Context(),
-		&client.CreateAppParams{SkipSketch: f.Ptr(true)},
+		&client.CreateAppParams{SkipSketch: new(true)},
 		appToCreate,
 	)
 
@@ -222,11 +222,11 @@ func TestEditApp(t *testing.T) {
 	appName := "test-app-to-edit"
 	createResp, err := httpClient.CreateAppWithResponse(
 		t.Context(),
-		&client.CreateAppParams{SkipSketch: f.Ptr(true)},
+		&client.CreateAppParams{SkipSketch: new(true)},
 		client.CreateAppRequest{
-			Icon:        f.Ptr("💻"),
+			Icon:        new("💻"),
 			Name:        appName,
-			Description: f.Ptr("My app description"),
+			Description: new("My app description"),
 		},
 	)
 	require.NoError(t, err)
@@ -242,9 +242,9 @@ func TestEditApp(t *testing.T) {
 			t.Context(),
 			validAppId,
 			client.EditRequest{
-				Description: f.Ptr("new-description"),
-				Icon:        f.Ptr(modifedIcon),
-				Name:        f.Ptr(renamedApp),
+				Description: new("new-description"),
+				Icon:        new(modifedIcon),
+				Name:        new(renamedApp),
 			},
 		)
 		require.NoError(t, err)
@@ -260,11 +260,11 @@ func TestEditApp(t *testing.T) {
 	t.Run("RequestEmptyIcon_Success", func(t *testing.T) {
 		createResp, err := httpClient.CreateAppWithResponse(
 			t.Context(),
-			&client.CreateAppParams{SkipSketch: f.Ptr(true)},
+			&client.CreateAppParams{SkipSketch: new(true)},
 			client.CreateAppRequest{
-				Icon:        f.Ptr("💻"),
+				Icon:        new("💻"),
 				Name:        "new-valid-app-1",
-				Description: f.Ptr("My app description"),
+				Description: new("My app description"),
 			},
 		)
 		require.NoError(t, err)
@@ -289,7 +289,7 @@ func TestEditApp(t *testing.T) {
 		editResp, err := httpClient.EditApp(
 			t.Context(),
 			malformedAppId,
-			client.EditRequest{Name: f.Ptr("any-name")},
+			client.EditRequest{Name: new("any-name")},
 		)
 		require.NoError(t, err)
 		defer editResp.Body.Close()
@@ -307,9 +307,9 @@ func TestEditApp(t *testing.T) {
 			t.Context(),
 			"dXNlcjp0ZXN0LWFwcAw",
 			client.EditRequest{
-				Description: f.Ptr("new-description"),
-				Icon:        f.Ptr("🌟"),
-				Name:        f.Ptr("new name"),
+				Description: new("new-description"),
+				Icon:        new("🌟"),
+				Name:        new("new name"),
 			},
 		)
 		require.NoError(t, err)
@@ -326,11 +326,11 @@ func TestEditApp(t *testing.T) {
 	t.Run("InvalidRequestSintaxBody_Fail", func(t *testing.T) {
 		createResp, err := httpClient.CreateAppWithResponse(
 			t.Context(),
-			&client.CreateAppParams{SkipSketch: f.Ptr(true)},
+			&client.CreateAppParams{SkipSketch: new(true)},
 			client.CreateAppRequest{
-				Icon:        f.Ptr("💻"),
+				Icon:        new("💻"),
 				Name:        "new-valid-app",
-				Description: f.Ptr("My app description"),
+				Description: new("My app description"),
 			},
 		)
 		require.NoError(t, err)
@@ -360,11 +360,11 @@ func TestEditApp(t *testing.T) {
 	t.Run("InvalidRequestIcon_Fail", func(t *testing.T) {
 		createResp, err := httpClient.CreateAppWithResponse(
 			t.Context(),
-			&client.CreateAppParams{SkipSketch: f.Ptr(true)},
+			&client.CreateAppParams{SkipSketch: new(true)},
 			client.CreateAppRequest{
-				Icon:        f.Ptr("💻"),
+				Icon:        new("💻"),
 				Name:        "new-valid-app-2",
-				Description: f.Ptr("My app description"),
+				Description: new("My app description"),
 			},
 		)
 		require.NoError(t, err)
@@ -399,11 +399,11 @@ func TestDeleteApp(t *testing.T) {
 	appToDeleteName := "app-to-be-deleted"
 	createResp, err := httpClient.CreateAppWithResponse(
 		t.Context(),
-		&client.CreateAppParams{SkipSketch: f.Ptr(true)},
+		&client.CreateAppParams{SkipSketch: new(true)},
 		client.CreateAppRequest{
-			Icon:        f.Ptr("🗑️"),
+			Icon:        new("🗑️"),
 			Name:        appToDeleteName,
-			Description: f.Ptr("My app description"),
+			Description: new("My app description"),
 		},
 	)
 	require.NoError(t, err)
@@ -547,9 +547,9 @@ func TestAppClone(t *testing.T) {
 		t.Context(),
 		&client.CreateAppParams{},
 		client.CreateAppRequest{
-			Icon:        f.Ptr("📄"),
+			Icon:        new("📄"),
 			Name:        "source-app",
-			Description: f.Ptr("My app description"),
+			Description: new("My app description"),
 		},
 	)
 	require.NoError(t, err)
@@ -560,9 +560,9 @@ func TestAppClone(t *testing.T) {
 		t.Context(),
 		&client.CreateAppParams{},
 		client.CreateAppRequest{
-			Icon:        f.Ptr("🚫"),
+			Icon:        new("🚫"),
 			Name:        "existing-clone-name",
-			Description: f.Ptr("My app description"),
+			Description: new("My app description"),
 		},
 	)
 	require.NoError(t, err)
@@ -576,8 +576,8 @@ func TestAppClone(t *testing.T) {
 			t.Context(),
 			sourceAppId,
 			client.CloneRequest{
-				Name: f.Ptr(newCloneName),
-				Icon: f.Ptr(newCloneIcon),
+				Name: new(newCloneName),
+				Icon: new(newCloneIcon),
 			},
 		)
 		require.NoError(t, err)
@@ -626,7 +626,7 @@ func TestAppClone(t *testing.T) {
 		resp, err := httpClient.CloneApp(
 			t.Context(),
 			sourceAppId,
-			client.CloneRequest{Name: f.Ptr("existing-clone-name")},
+			client.CloneRequest{Name: new("existing-clone-name")},
 		)
 		require.NoError(t, err)
 		defer resp.Body.Close()
@@ -666,9 +666,9 @@ func TestAppLogs(t *testing.T) {
 		t.Context(),
 		&client.CreateAppParams{},
 		client.CreateAppRequest{
-			Icon:        f.Ptr("📜"),
+			Icon:        new("📜"),
 			Name:        "app-with-logs",
-			Description: f.Ptr("My app description"),
+			Description: new("My app description"),
 		},
 	)
 	require.NoError(t, err)
@@ -710,7 +710,7 @@ func TestAppLogs(t *testing.T) {
 
 	t.Run("InvalidTailValue_Fail", func(t *testing.T) {
 		var actualResponseBody models.ErrorResponse
-		resp, err := httpClient.GetAppLogs(t.Context(), appWithLogsId, &client.GetAppLogsParams{Tail: f.Ptr(-4)})
+		resp, err := httpClient.GetAppLogs(t.Context(), appWithLogsId, &client.GetAppLogsParams{Tail: new(-4)})
 		require.NoError(t, err)
 		defer resp.Body.Close()
 
@@ -729,11 +729,11 @@ func TestAppDetails(t *testing.T) {
 	appName := "test-app-details"
 	createResp, err := httpClient.CreateAppWithResponse(
 		t.Context(),
-		&client.CreateAppParams{SkipSketch: f.Ptr(true)},
+		&client.CreateAppParams{SkipSketch: new(true)},
 		client.CreateAppRequest{
-			Icon:        f.Ptr("💻"),
+			Icon:        new("💻"),
 			Name:        appName,
-			Description: f.Ptr("My app description"),
+			Description: new("My app description"),
 		},
 	)
 	require.NoError(t, err)
@@ -744,7 +744,7 @@ func TestAppDetails(t *testing.T) {
 		t.Context(),
 		*createResp.JSON201.Id,
 		ImageClassifactionBrickID,
-		client.BrickCreateUpdateRequest{Model: f.Ptr("mobilenet-image-classification")},
+		client.BrickCreateUpdateRequest{Model: new("mobilenet-image-classification")},
 		func(ctx context.Context, req *http.Request) error { return nil },
 	)
 	require.NoError(t, err)
@@ -764,8 +764,8 @@ func TestAppDetails(t *testing.T) {
 			client.AppDetailedBrick{
 				Id:           ImageClassifactionBrickID,
 				Name:         "Image Classification",
-				Category:     f.Ptr("video"),
-				RequireModel: f.Ptr(true),
+				Category:     new("video"),
+				RequireModel: new(true),
 			},
 			(*detailsResp.JSON200.Bricks)[0],
 		)
@@ -783,11 +783,11 @@ func TestAppPorts(t *testing.T) {
 
 		createResp, err := httpClient.CreateAppWithResponse(
 			t.Context(),
-			&client.CreateAppParams{SkipSketch: f.Ptr(true)},
+			&client.CreateAppParams{SkipSketch: new(true)},
 			client.CreateAppRequest{
-				Icon:        f.Ptr("💻"),
+				Icon:        new("💻"),
 				Name:        "test-app",
-				Description: f.Ptr("My app description"),
+				Description: new("My app description"),
 			},
 			func(ctx context.Context, req *http.Request) error { return nil },
 		)
@@ -829,11 +829,11 @@ func TestAppPorts(t *testing.T) {
 
 		createResp, err := httpClient.CreateAppWithResponse(
 			t.Context(),
-			&client.CreateAppParams{SkipSketch: f.Ptr(true)},
+			&client.CreateAppParams{SkipSketch: new(true)},
 			client.CreateAppRequest{
-				Icon:        f.Ptr("💻"),
+				Icon:        new("💻"),
 				Name:        "test-app-2",
-				Description: f.Ptr("My app description"),
+				Description: new("My app description"),
 			},
 			func(ctx context.Context, req *http.Request) error { return nil },
 		)
@@ -904,11 +904,11 @@ func TestGetAppsStatusEvents(t *testing.T) {
 		go func() {
 			createResp, err := httpClient.CreateAppWithResponse(
 				t.Context(),
-				&client.CreateAppParams{SkipSketch: f.Ptr(true)},
+				&client.CreateAppParams{SkipSketch: new(true)},
 				client.CreateAppRequest{
-					Icon:        f.Ptr("💻"),
+					Icon:        new("💻"),
 					Name:        appName,
-					Description: f.Ptr("My app description"),
+					Description: new("My app description"),
 				},
 			)
 			require.NoError(t, err)
@@ -925,7 +925,7 @@ func TestGetAppsStatusEvents(t *testing.T) {
 			}
 			eventData := strings.TrimPrefix(line, "data: ")
 			if strings.Contains(eventData, `"name":"`+appName+`"`) {
-				var event map[string]interface{}
+				var event map[string]any
 				err := json.Unmarshal([]byte(eventData), &event)
 				require.NoError(t, err)
 				status, ok := event["status"].(string)
@@ -962,13 +962,13 @@ func TestAppList(t *testing.T) {
 
 	t.Run("AppListShouldContainsAllTheelements_success", func(t *testing.T) {
 		expectedAppNumber := 5
-		for i := 0; i < expectedAppNumber; i++ {
+		for i := range expectedAppNumber {
 			r, err := httpClient.CreateApp(t.Context(), &client.CreateAppParams{
-				SkipSketch: f.Ptr(false),
+				SkipSketch: new(false),
 			}, client.CreateAppRequest{
-				Icon:        f.Ptr("🌎"),
+				Icon:        new("🌎"),
 				Name:        "HelloWorld-" + strconv.Itoa(i),
-				Description: f.Ptr("My HelloWorld description")})
+				Description: new("My HelloWorld description")})
 			require.NoError(t, err)
 			defer r.Body.Close()
 		}
@@ -981,11 +981,11 @@ func TestAppList(t *testing.T) {
 
 	t.Run("AppListDefault_success", func(t *testing.T) {
 		r, err := httpClient.CreateApp(t.Context(), &client.CreateAppParams{
-			SkipSketch: f.Ptr(false),
+			SkipSketch: new(false),
 		}, client.CreateAppRequest{
-			Icon:        f.Ptr("🌎"),
+			Icon:        new("🌎"),
 			Name:        "HelloWorld-default",
-			Description: f.Ptr("My HelloWorld description")})
+			Description: new("My HelloWorld description")})
 		require.NoError(t, err)
 		defer r.Body.Close()
 		body, err := io.ReadAll(r.Body)
@@ -1001,13 +1001,13 @@ func TestAppList(t *testing.T) {
 			t.Context(),
 			defaultAppId,
 			client.EditRequest{
-				Default: f.Ptr(true),
+				Default: new(true),
 			},
 		)
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, editResp.StatusCode())
 
-		resp, err := httpClient.GetAppsWithResponse(t.Context(), &client.GetAppsParams{Filter: f.Ptr("default")})
+		resp, err := httpClient.GetAppsWithResponse(t.Context(), &client.GetAppsParams{Filter: new("default")})
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, resp.StatusCode())
 		require.NotNil(t, resp.JSON200)
@@ -1025,11 +1025,11 @@ func TestExportApp(t *testing.T) {
 	rootFolder := strings.ToLower(appName)
 	createResp, err := httpClient.CreateAppWithResponse(
 		t.Context(),
-		&client.CreateAppParams{SkipSketch: f.Ptr(true)},
+		&client.CreateAppParams{SkipSketch: new(true)},
 		client.CreateAppRequest{
-			Icon:        f.Ptr("📦"),
+			Icon:        new("📦"),
 			Name:        appName,
-			Description: f.Ptr("An app to test export functionality"),
+			Description: new("An app to test export functionality"),
 		},
 	)
 	require.NoError(t, err)
@@ -1076,7 +1076,7 @@ func TestExportApp(t *testing.T) {
 			t.Context(),
 			validAppId,
 			&client.ExportAppParams{
-				IncludeData: f.Ptr(true),
+				IncludeData: new(true),
 			},
 		)
 		require.NoError(t, err)
@@ -1399,11 +1399,11 @@ func TestSketchAppLibrariesCommands(t *testing.T) {
 	// Create a new App
 	createResp, err := httpClient.CreateAppWithResponse(
 		t.Context(),
-		&client.CreateAppParams{SkipSketch: f.Ptr(false)},
+		&client.CreateAppParams{SkipSketch: new(false)},
 		client.CreateAppRequest{
-			Icon:        f.Ptr("📚"),
+			Icon:        new("📚"),
 			Name:        "test-app-libraries",
-			Description: f.Ptr("Test app for library operations"),
+			Description: new("Test app for library operations"),
 		},
 	)
 	require.NoError(t, err)
@@ -1416,7 +1416,7 @@ func TestSketchAppLibrariesCommands(t *testing.T) {
 		t.Context(),
 		appID,
 		"Arduino_RouterBridge",
-		&client.AppSketchAddLibraryParams{AddDeps: f.Ptr(true)},
+		&client.AppSketchAddLibraryParams{AddDeps: new(true)},
 	)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, addResp.StatusCode())
@@ -1452,7 +1452,7 @@ func TestSketchAppLibrariesCommands(t *testing.T) {
 		t.Context(),
 		appID,
 		"Arduino_RouterBridge",
-		&client.AppSketchRemoveLibraryParams{RemoveDeps: f.Ptr(true)},
+		&client.AppSketchRemoveLibraryParams{RemoveDeps: new(true)},
 	)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, removeResp.StatusCode())

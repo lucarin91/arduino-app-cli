@@ -64,6 +64,6 @@ func (r deleteModelResult) String() string {
 	return fmt.Sprintf("✓ Model '%q deleted successfully.", r.ModelID)
 }
 
-func (r deleteModelResult) Data() interface{} {
+func (r deleteModelResult) Data() any {
 	return r
 }

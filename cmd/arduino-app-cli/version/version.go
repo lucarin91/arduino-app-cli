@@ -109,6 +109,6 @@ func (r versionResult) String() string {
 	return resultMessage
 }
 
-func (r versionResult) Data() interface{} {
+func (r versionResult) Data() any {
 	return r
 }

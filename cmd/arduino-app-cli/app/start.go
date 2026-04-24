@@ -102,6 +102,6 @@ func (r startAppResult) String() string {
 	return fmt.Sprintf("✓ App %q started successfully", r.AppName)
 }
 
-func (r startAppResult) Data() interface{} {
+func (r startAppResult) Data() any {
 	return r
 }

@@ -100,6 +100,6 @@ func (r appListResult) String() string {
 	return t.Render()
 }
 
-func (r appListResult) Data() interface{} {
+func (r appListResult) Data() any {
 	return r
 }

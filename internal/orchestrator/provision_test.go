@@ -143,14 +143,14 @@ bricks:
 	require.NoError(t, err)
 
 	type services struct {
-		Services map[string]map[string]interface{} `yaml:"services"`
+		Services map[string]map[string]any `yaml:"services"`
 	}
 	content := services{}
 	err = yaml.Unmarshal(overridesContent, &content)
 	require.Nil(t, err, "Failed to unmarshal overrides content")
 	require.NotNil(t, content.Services["ei-video-obj-detection-runner"], "Override for ei-video-obj-detection-runner should exist")
 	require.NotNil(t, content.Services["ei-video-obj-detection-runner"]["devices"], "Override for ei-video-obj-detection-runner devices should exist")
-	require.Equal(t, "bar", content.Services["ei-video-obj-detection-runner"]["environment"].(map[string]interface{})["FOO"])
+	require.Equal(t, "bar", content.Services["ei-video-obj-detection-runner"]["environment"].(map[string]any)["FOO"])
 }
 
 func TestVolumeParser(t *testing.T) {
@@ -712,11 +712,11 @@ bricks:
 	require.NoError(t, err)
 
 	type services struct {
-		Services map[string]map[string]interface{} `yaml:"services"`
+		Services map[string]map[string]any `yaml:"services"`
 	}
 	content := services{}
 	err = yaml.Unmarshal(overridesContent, &content)
 	require.Nil(t, err, "Failed to unmarshal overrides content")
 	require.NotNil(t, content.Services["ei-video-obj-detection-runner"], "Override for ei-video-obj-detection-runner should exist")
-	require.Equal(t, "bar", content.Services["ei-video-obj-detection-runner"]["environment"].(map[string]interface{})["FOO"])
+	require.Equal(t, "bar", content.Services["ei-video-obj-detection-runner"]["environment"].(map[string]any)["FOO"])
 }

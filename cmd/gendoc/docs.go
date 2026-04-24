@@ -61,7 +61,7 @@ func NewOpenApiGenerator(version string) *Generator {
 	reflector.Spec.Info.WithTitle("Arduino-App-Cli").WithVersion(version)
 	reflector.Spec.Servers = append(reflector.Spec.Servers, openapi3.Server{
 		URL:         "http://localhost:6060",
-		Description: f.Ptr("local server"),
+		Description: new("local server"),
 	})
 
 	reflector.Spec.Components = &openapi3.Components{}
@@ -70,10 +70,10 @@ func NewOpenApiGenerator(version string) *Generator {
 		"Status",
 		openapi3.SchemaOrRef{
 			Schema: &openapi3.Schema{
-				UniqueItems: f.Ptr(true),
-				Enum:        f.Map(orchestrator.Status("").AllowedStatuses(), func(v orchestrator.Status) interface{} { return v }),
-				Type:        f.Ptr(openapi3.SchemaTypeString),
-				Description: f.Ptr("Application status"),
+				UniqueItems: new(true),
+				Enum:        f.Map(orchestrator.Status("").AllowedStatuses(), func(v orchestrator.Status) any { return v }),
+				Type:        new(openapi3.SchemaTypeString),
+				Description: new("Application status"),
 				ReflectType: reflect.TypeOf(orchestrator.Status("")),
 			},
 		},
@@ -82,10 +82,10 @@ func NewOpenApiGenerator(version string) *Generator {
 		"PackageType",
 		openapi3.SchemaOrRef{
 			Schema: &openapi3.Schema{
-				UniqueItems: f.Ptr(true),
-				Enum:        f.Map(update.PackageType("").AllowedStatuses(), func(v update.PackageType) interface{} { return v }),
-				Type:        f.Ptr(openapi3.SchemaTypeString),
-				Description: f.Ptr("Package type"),
+				UniqueItems: new(true),
+				Enum:        f.Map(update.PackageType("").AllowedStatuses(), func(v update.PackageType) any { return v }),
+				Type:        new(openapi3.SchemaTypeString),
+				Description: new("Package type"),
 				ReflectType: reflect.TypeOf(update.PackageType("")),
 			},
 		},
@@ -101,7 +101,7 @@ func NewOpenApiGenerator(version string) *Generator {
 						Description: "Bad Request",
 						Content: map[string]openapi3.MediaType{
 							"application/json": {
-								Example: f.Ptr(interface{}(map[string]interface{}{
+								Example: new(any(map[string]any{
 									"details": "The request is invalid or missing required parameters.",
 								})),
 								Schema: &openapi3.SchemaOrRef{
@@ -118,7 +118,7 @@ func NewOpenApiGenerator(version string) *Generator {
 						Description: "Not Found",
 						Content: map[string]openapi3.MediaType{
 							"application/json": {
-								Example: f.Ptr(interface{}(map[string]interface{}{
+								Example: new(any(map[string]any{
 									"details": "The requested resource was not found.",
 								})),
 								Schema: &openapi3.SchemaOrRef{
@@ -135,7 +135,7 @@ func NewOpenApiGenerator(version string) *Generator {
 						Description: "Conflict",
 						Content: map[string]openapi3.MediaType{
 							"application/json": {
-								Example: f.Ptr(interface{}(map[string]interface{}{
+								Example: new(any(map[string]any{
 									"details": "There is a conflict with an existing resource.",
 								})),
 								Schema: &openapi3.SchemaOrRef{
@@ -152,7 +152,7 @@ func NewOpenApiGenerator(version string) *Generator {
 						Description: "No Content",
 						Content: map[string]openapi3.MediaType{
 							"application/json": {
-								Example: f.Ptr(interface{}(map[string]interface{}{
+								Example: new(any(map[string]any{
 									"details": "No content to return.",
 								})),
 								Schema: &openapi3.SchemaOrRef{
@@ -169,7 +169,7 @@ func NewOpenApiGenerator(version string) *Generator {
 						Description: "Precondition Failed",
 						Content: map[string]openapi3.MediaType{
 							"application/json": {
-								Example: f.Ptr(interface{}(map[string]interface{}{
+								Example: new(any(map[string]any{
 									"details": "The request is invalid.",
 								})),
 								Schema: &openapi3.SchemaOrRef{
@@ -186,7 +186,7 @@ func NewOpenApiGenerator(version string) *Generator {
 						Description: "Internal Server Error",
 						Content: map[string]openapi3.MediaType{
 							"application/json": {
-								Example: f.Ptr(interface{}(map[string]interface{}{
+								Example: new(any(map[string]any{
 									"details": "An unexpected error occurred.",
 								})),
 								Schema: &openapi3.SchemaOrRef{
@@ -203,7 +203,7 @@ func NewOpenApiGenerator(version string) *Generator {
 						Description: "Unauthorized",
 						Content: map[string]openapi3.MediaType{
 							"application/json": {
-								Example: f.Ptr(interface{}(map[string]interface{}{
+								Example: new(any(map[string]any{
 									"details": "Unauthorized access to the resource.",
 								})),
 								Schema: &openapi3.SchemaOrRef{
@@ -220,7 +220,7 @@ func NewOpenApiGenerator(version string) *Generator {
 						Description: "Insufficient Storage",
 						Content: map[string]openapi3.MediaType{
 							"application/json": {
-								Example: f.Ptr(interface{}(map[string]interface{}{
+								Example: new(any(map[string]any{
 									"details": "Insufficient storage to complete the request.",
 								})),
 								Schema: &openapi3.SchemaOrRef{
@@ -237,7 +237,7 @@ func NewOpenApiGenerator(version string) *Generator {
 						Description: "Forbidden",
 						Content: map[string]openapi3.MediaType{
 							"application/json": {
-								Example: f.Ptr(interface{}(map[string]interface{}{
+								Example: new(any(map[string]any{
 									"details": "You do not have permission to access this resource.",
 								})),
 								Schema: &openapi3.SchemaOrRef{
@@ -265,7 +265,7 @@ func NewOpenApiGenerator(version string) *Generator {
 			// We treat the orchestrator.ID as a string in the OpenAPI spec.
 			if params.Value.Type() == reflect.TypeOf(app.ID{}) {
 				params.Schema.WithType(jsonschema.Type{
-					SimpleTypes: f.Ptr(jsonschema.String),
+					SimpleTypes: new(jsonschema.String),
 				})
 			}
 
@@ -296,8 +296,8 @@ type OperationConfig struct {
 	OperationId    string
 	Method         string
 	Path           string
-	Parameters     interface{}
-	Request        interface{}
+	Parameters     any
+	Request        any
 	Description    string
 	Summary        string
 	Tags           []Tag
@@ -309,7 +309,7 @@ type OperationConfig struct {
 type CustomResponseDef struct {
 	ContentType   string
 	Description   string
-	DataStructure interface{}
+	DataStructure any
 	StatusCode    int
 }
 type ErrorResponse struct {
@@ -1333,8 +1333,8 @@ func (g *Generator) AddOperation(config OperationConfig) error {
 					return
 				}
 				if content.Schema != nil && content.Schema.Schema != nil {
-					content.Schema.Schema.Type = f.Ptr(openapi3.SchemaTypeString)
-					content.Schema.Schema.Format = f.Ptr("binary")
+					content.Schema.Schema.Type = new(openapi3.SchemaTypeString)
+					content.Schema.Schema.Format = new("binary")
 				}
 			}
 		}

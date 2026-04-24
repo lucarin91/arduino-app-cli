@@ -136,6 +136,6 @@ func (r exportAppResult) String() string {
 	return fmt.Sprintf("✓ %s to '%s'", r.Message, r.AppName)
 }
 
-func (r exportAppResult) Data() interface{} {
+func (r exportAppResult) Data() any {
 	return r
 }

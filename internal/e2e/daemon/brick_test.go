@@ -26,7 +26,6 @@ import (
 
 	"github.com/arduino/go-paths-helper"
 	"github.com/stretchr/testify/require"
-	"go.bug.st/f"
 
 	"github.com/arduino/arduino-app-cli/internal/api/models"
 	"github.com/arduino/arduino-app-cli/internal/e2e/client"
@@ -40,11 +39,11 @@ func setupTestBrick(t *testing.T) (*client.CreateAppResp, *client.ClientWithResp
 	httpClient := GetHttpclient(t)
 	createResp, err := httpClient.CreateAppWithResponse(
 		t.Context(),
-		&client.CreateAppParams{SkipSketch: f.Ptr(true)},
+		&client.CreateAppParams{SkipSketch: new(true)},
 		client.CreateAppRequest{
-			Icon:        f.Ptr("💻"),
+			Icon:        new("💻"),
 			Name:        "test-app",
-			Description: f.Ptr("My app description"),
+			Description: new("My app description"),
 		},
 		func(ctx context.Context, req *http.Request) error { return nil },
 	)
@@ -56,7 +55,7 @@ func setupTestBrick(t *testing.T) (*client.CreateAppResp, *client.ClientWithResp
 		t.Context(),
 		*createResp.JSON201.Id,
 		ImageClassifactionBrickID,
-		client.BrickCreateUpdateRequest{Model: f.Ptr("mobilenet-image-classification")},
+		client.BrickCreateUpdateRequest{Model: new("mobilenet-image-classification")},
 		func(ctx context.Context, req *http.Request) error { return nil },
 	)
 	require.NoError(t, err)
@@ -111,22 +110,22 @@ func TestBricksDetails(t *testing.T) {
 
 		expectedUsedByApps := []client.AppReference{
 			{
-				Id:   f.Ptr("dXNlcjp0ZXN0LWFwcA"),
-				Name: f.Ptr("test-app"),
-				Icon: f.Ptr("💻"),
+				Id:   new("dXNlcjp0ZXN0LWFwcA"),
+				Name: new("test-app"),
+				Icon: new("💻"),
 			},
 		}
 
 		expectedModelLiteInfo := []client.AIModel{
 			{
-				Id:          f.Ptr("mobilenet-image-classification"),
-				Name:        f.Ptr("General purpose image classification"),
-				Description: f.Ptr("General purpose image classification model based on MobileNetV2. This model is trained on the ImageNet dataset and can classify images into 1000 categories."),
+				Id:          new("mobilenet-image-classification"),
+				Name:        new("General purpose image classification"),
+				Description: new("General purpose image classification model based on MobileNetV2. This model is trained on the ImageNet dataset and can classify images into 1000 categories."),
 			},
 			{
-				Id:          f.Ptr("person-classification"),
-				Name:        f.Ptr("Person classification"),
-				Description: f.Ptr("Person classification model based on WakeVision dataset. This model is trained to classify images into two categories: person and not-person."),
+				Id:          new("person-classification"),
+				Name:        new("Person classification"),
+				Description: new("Person classification model based on WakeVision dataset. This model is trained to classify images into two categories: person and not-person."),
 			}}
 
 		response, err := httpClient.GetBrickDetailsWithResponse(t.Context(), validBrickID, func(ctx context.Context, req *http.Request) error { return nil })

@@ -26,10 +26,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-	"go.bug.st/f"
-
 	"github.com/arduino/go-paths-helper"
+	"github.com/stretchr/testify/require"
 
 	"github.com/arduino/arduino-app-cli/internal/api/models"
 	"github.com/arduino/arduino-app-cli/internal/e2e"
@@ -132,13 +130,13 @@ func TestAIModelDetails(t *testing.T) {
 
 		got := response.JSON200
 		require.Equal(t, &client.AIModelItem{
-			Id:          f.Ptr("custom-classification-model-eim"),
-			Name:        f.Ptr("this the name of the model"),
-			IsBuiltin:   f.Ptr(false),
-			Runner:      f.Ptr(""),
-			Description: f.Ptr("this is the description of the model"),
+			Id:          new("custom-classification-model-eim"),
+			Name:        new("this the name of the model"),
+			IsBuiltin:   new(false),
+			Runner:      new(""),
+			Description: new("this is the description of the model"),
 			BrickIds:    &[]string{"arduino:audio_classification"},
-			DiskUsage:   f.Ptr(222),
+			DiskUsage:   new(222),
 		}, got, "The returned model details should match the expected values")
 
 		// TODO test metadata and model configuration contents and runner
@@ -185,7 +183,7 @@ func TestAIModelDelete(t *testing.T) {
 		expectedDetails := "id must be set"
 		var actualBody models.ErrorResponse
 
-		response, err := httpClient.DeleteAIModelWithResponse(t.Context(), modelId, &client.DeleteAIModelParams{Force: f.Ptr(false)}, requestEditor)
+		response, err := httpClient.DeleteAIModelWithResponse(t.Context(), modelId, &client.DeleteAIModelParams{Force: new(false)}, requestEditor)
 		require.NoError(t, err)
 		require.Equal(t, http.StatusPreconditionFailed, response.StatusCode())
 		err = json.Unmarshal(response.Body, &actualBody)
@@ -199,7 +197,7 @@ func TestAIModelDelete(t *testing.T) {
 		expectedDetails := fmt.Sprintf("%q: model not found", modelId)
 		var actualBody models.ErrorResponse
 
-		response, err := httpClient.DeleteAIModelWithResponse(t.Context(), modelId, &client.DeleteAIModelParams{Force: f.Ptr(false)}, requestEditor)
+		response, err := httpClient.DeleteAIModelWithResponse(t.Context(), modelId, &client.DeleteAIModelParams{Force: new(false)}, requestEditor)
 		require.NoError(t, err)
 		require.Equal(t, http.StatusNotFound, response.StatusCode())
 		err = json.Unmarshal(response.Body, &actualBody)
@@ -213,7 +211,7 @@ func TestAIModelDelete(t *testing.T) {
 		expectedDetails := "cannot remove an internal model"
 		var actualBody models.ErrorResponse
 
-		response, err := httpClient.DeleteAIModelWithResponse(t.Context(), modelId, &client.DeleteAIModelParams{Force: f.Ptr(false)}, requestEditor)
+		response, err := httpClient.DeleteAIModelWithResponse(t.Context(), modelId, &client.DeleteAIModelParams{Force: new(false)}, requestEditor)
 		require.NoError(t, err)
 		require.Equal(t, http.StatusConflict, response.StatusCode())
 		err = json.Unmarshal(response.Body, &actualBody)
@@ -242,7 +240,7 @@ func TestAIModelDelete(t *testing.T) {
 		icon := "💻"
 		createResp, err := httpClient.CreateAppWithResponse(
 			t.Context(),
-			&client.CreateAppParams{SkipSketch: f.Ptr(true)},
+			&client.CreateAppParams{SkipSketch: new(true)},
 			client.CreateAppRequest{
 				Icon: &icon,
 				Name: appName,
@@ -272,7 +270,7 @@ func TestAIModelDelete(t *testing.T) {
 		require.Equal(t, http.StatusOK, appUpdate.StatusCode())
 
 		/* Delete the model, not forced */
-		response, err := httpClient.DeleteAIModelWithResponse(t.Context(), modelId, &client.DeleteAIModelParams{Force: f.Ptr(false)}, requestEditor)
+		response, err := httpClient.DeleteAIModelWithResponse(t.Context(), modelId, &client.DeleteAIModelParams{Force: new(false)}, requestEditor)
 		require.NoError(t, err)
 		require.Equal(t, http.StatusConflict, response.StatusCode())
 		err = json.Unmarshal(response.Body, &actualBody)
@@ -280,7 +278,7 @@ func TestAIModelDelete(t *testing.T) {
 		require.Equal(t, expectedDetails, actualBody.Details)
 
 		/* Delete the model, forced */
-		response, err = httpClient.DeleteAIModelWithResponse(t.Context(), modelId, &client.DeleteAIModelParams{Force: f.Ptr(true)}, requestEditor)
+		response, err = httpClient.DeleteAIModelWithResponse(t.Context(), modelId, &client.DeleteAIModelParams{Force: new(true)}, requestEditor)
 		require.NoError(t, err)
 		require.Equal(t, http.StatusNoContent, response.StatusCode())
 		require.NoError(t, err)

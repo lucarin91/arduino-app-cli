@@ -83,7 +83,7 @@ func TestCloneApp(t *testing.T) {
 		t.Run("with name", func(t *testing.T) {
 			resp, err := CloneApp(t.Context(), CloneAppRequest{
 				FromID: originalAppID,
-				Name:   f.Ptr("new-name"),
+				Name:   new("new-name"),
 			}, idProvider, cfg)
 			require.NoError(t, err)
 			require.Equal(t, f.Must(idProvider.ParseID("user:new-name")), resp.ID)
@@ -100,8 +100,8 @@ func TestCloneApp(t *testing.T) {
 		t.Run("with icon", func(t *testing.T) {
 			resp, err := CloneApp(t.Context(), CloneAppRequest{
 				FromID: originalAppID,
-				Name:   f.Ptr("with-icon"),
-				Icon:   f.Ptr("🦄"),
+				Name:   new("with-icon"),
+				Icon:   new("🦄"),
 			}, idProvider, cfg)
 			require.NoError(t, err)
 			require.Equal(t, f.Must(idProvider.ParseID("user:with-icon")), resp.ID)
@@ -151,7 +151,7 @@ func TestCloneApp(t *testing.T) {
 		t.Run("name already exists", func(t *testing.T) {
 			_, err = CloneApp(t.Context(), CloneAppRequest{
 				FromID: originalAppID,
-				Name:   f.Ptr("original-app"),
+				Name:   new("original-app"),
 			}, idProvider, cfg)
 			require.ErrorIs(t, err, ErrAppAlreadyExists)
 		})
@@ -174,7 +174,7 @@ func TestEditApp(t *testing.T) {
 			require.NoError(t, err)
 			require.Nil(t, previousDefaultApp)
 
-			err = EditApp(AppEditRequest{Default: f.Ptr(true)}, &app, cfg)
+			err = EditApp(AppEditRequest{Default: new(true)}, &app, cfg)
 			require.NoError(t, err)
 
 			currentDefaultApp, err := GetDefaultApp(cfg)
@@ -190,7 +190,7 @@ func TestEditApp(t *testing.T) {
 			require.NoError(t, err)
 			require.True(t, appDir.EquivalentTo(previousDefaultApp.FullPath))
 
-			err = EditApp(AppEditRequest{Default: f.Ptr(false)}, &app, cfg)
+			err = EditApp(AppEditRequest{Default: new(false)}, &app, cfg)
 			require.NoError(t, err)
 
 			currentDefaultApp, err := GetDefaultApp(cfg)
@@ -207,7 +207,7 @@ func TestEditApp(t *testing.T) {
 		userApp := f.Must(app.Load(appDir))
 		originalPath := userApp.FullPath
 
-		err = EditApp(AppEditRequest{Name: f.Ptr("new-name")}, &userApp, cfg)
+		err = EditApp(AppEditRequest{Name: new("new-name")}, &userApp, cfg)
 		require.NoError(t, err)
 		editedApp, err := app.Load(cfg.AppsDir().Join("new-name"))
 		require.NoError(t, err)
@@ -221,7 +221,7 @@ func TestEditApp(t *testing.T) {
 			appDir := cfg.AppsDir().Join(existingAppName)
 			existingApp := f.Must(app.Load(appDir))
 
-			err = EditApp(AppEditRequest{Name: f.Ptr(existingAppName)}, &existingApp, cfg)
+			err = EditApp(AppEditRequest{Name: new(existingAppName)}, &existingApp, cfg)
 			require.ErrorIs(t, err, ErrAppAlreadyExists)
 		})
 	})
@@ -234,8 +234,8 @@ func TestEditApp(t *testing.T) {
 		commonApp := f.Must(app.Load(commonAppDir))
 
 		err = EditApp(AppEditRequest{
-			Icon:        f.Ptr("💻"),
-			Description: f.Ptr("new desc"),
+			Icon:        new("💻"),
+			Description: new("new desc"),
 		}, &commonApp, cfg)
 		require.NoError(t, err)
 		editedApp := f.Must(app.Load(commonAppDir))

@@ -101,6 +101,6 @@ func (r restartAppResult) String() string {
 	return fmt.Sprintf("✓ App %q restarted successfully", r.AppName)
 }
 
-func (r restartAppResult) Data() interface{} {
+func (r restartAppResult) Data() any {
 	return r
 }

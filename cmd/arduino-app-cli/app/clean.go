@@ -78,6 +78,6 @@ func (r cacheCleanResult) String() string {
 	return fmt.Sprintf("✓ Cache of %q App cleaned", r.AppName)
 }
 
-func (r cacheCleanResult) Data() interface{} {
+func (r cacheCleanResult) Data() any {
 	return r
 }

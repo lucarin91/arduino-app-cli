@@ -34,7 +34,8 @@ import (
 )
 
 func newStartCmd(cfg config.Configuration) *cobra.Command {
-	return &cobra.Command{
+	var verbose bool
+	cmd := &cobra.Command{
 		Use:   "start app_path",
 		Short: "Start an Arduino App",
 		Args:  cobra.MaximumNArgs(1),
@@ -46,16 +47,20 @@ func newStartCmd(cfg config.Configuration) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return startHandler(cmd.Context(), cfg, app)
+			return startHandler(cmd.Context(), cfg, app, verbose)
 		},
 		ValidArgsFunction: completion.ApplicationNamesWithFilterFunc(cfg, func(apps orchestrator.AppInfo) bool {
 			return apps.Status != orchestrator.StatusStarting &&
 				apps.Status != orchestrator.StatusRunning
 		}),
 	}
+
+	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output")
+
+	return cmd
 }
 
-func startHandler(ctx context.Context, cfg config.Configuration, app app.ArduinoApp) error {
+func startHandler(ctx context.Context, cfg config.Configuration, app app.ArduinoApp, verbose bool) error {
 	out, _, getResult := feedback.OutputStreams()
 
 	stream := orchestrator.StartApp(
@@ -69,6 +74,7 @@ func startHandler(ctx context.Context, cfg config.Configuration, app app.Arduino
 		cfg,
 		servicelocator.GetStaticStore(),
 		servicelocator.GetPlatform(),
+		verbose,
 	)
 	for message := range stream {
 		switch message.GetType() {

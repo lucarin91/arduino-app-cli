@@ -128,17 +128,11 @@ func SystemInit(ctx context.Context, cfg config.Configuration, bricksindex *bric
 
 func downloadSupportedImages(ctx context.Context, cfg config.Configuration, brickindex *bricksindex.BricksIndex, servicesindex *servicesindex.ServicesIndex, docker *command.DockerCli, stdout io.Writer) error {
 	imagesToPreinstall := []string{cfg.PythonImage}
-	brickImages, err := getAllSupportedBrickImages(brickindex)
+	brickImages, err := getAllSupportedBrickImages(brickindex, servicesindex)
 	if err != nil {
 		return err
 	}
 	imagesToPreinstall = append(imagesToPreinstall, brickImages...)
-
-	brickServiceImages, err := getAllSupportedBrickServiceImages(servicesindex)
-	if err != nil {
-		return err
-	}
-	imagesToPreinstall = append(imagesToPreinstall, brickServiceImages...)
 
 	pulledImages, err := listImagesAlreadyPulled(ctx, docker.Client())
 	if err != nil {
@@ -273,7 +267,7 @@ func listImagesAlreadyPulled(ctx context.Context, docker dockerClient.APIClient)
 	return result, nil
 }
 
-func getAllSupportedBrickImages(bricksIndex *bricksindex.BricksIndex) ([]string, error) {
+func getAllSupportedBrickImages(bricksIndex *bricksindex.BricksIndex, servicesIndex *servicesindex.ServicesIndex) ([]string, error) {
 	var result []string
 	for _, brick := range bricksIndex.ListBricks() {
 		composeFile, ok := brick.GetComposeFile()
@@ -284,24 +278,24 @@ func getAllSupportedBrickImages(bricksIndex *bricksindex.BricksIndex) ([]string,
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, images...)
-	}
 
-	return f.Uniq(result), nil
-}
-
-func getAllSupportedBrickServiceImages(serviceIndex *servicesindex.ServicesIndex) ([]string, error) {
-	var result []string
-	for _, service := range serviceIndex.Services {
-		composeFile, ok := service.GetComposeFile()
-		if !ok {
-			continue
-		}
-		images, err := extractImagesFromCompose(composeFile)
-		if err != nil {
-			return nil, err
-		}
 		result = append(result, images...)
+
+		for _, serviceName := range brick.RequiresServices {
+			service, ok := servicesIndex.FindServiceByID(serviceName)
+			if !ok {
+				feedback.Warnf("brick %s requires service %s, but it was not found in the services index", brick.ID, serviceName)
+				continue
+			}
+			if serviceComposeFile, ok := service.GetComposeFile(); ok {
+				serviceImages, err := extractImagesFromCompose(serviceComposeFile)
+				if err != nil {
+					return nil, fmt.Errorf("failed to extract images from compose file of service %s required by brick %s: %w", serviceName, brick.ID, err)
+				}
+				images = append(images, serviceImages...)
+			}
+		}
+
 	}
 
 	return f.Uniq(result), nil
@@ -425,20 +419,14 @@ func removeImage(ctx context.Context, docker dockerClient.APIClient, imageName s
 
 // imgages required by the system
 func getRequiredImages(cfg config.Configuration, bricksindex *bricksindex.BricksIndex, servicesindex *servicesindex.ServicesIndex) ([]string, error) {
-	bricksContainers, err := getAllSupportedBrickImages(bricksindex)
+	bricksContainers, err := getAllSupportedBrickImages(bricksindex, servicesindex)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse bricks runner images: %w", err)
 	}
 
-	bricksServiceContainers, err := getAllSupportedBrickServiceImages(servicesindex)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse brick services images: %w", err)
-	}
-
-	requiredImages := make([]string, 0, 1+len(bricksContainers)+len(bricksServiceContainers))
+	requiredImages := make([]string, 0, 1+len(bricksContainers))
 	requiredImages = append(requiredImages, cfg.PythonImage)
 	requiredImages = append(requiredImages, bricksContainers...)
-	requiredImages = append(requiredImages, bricksServiceContainers...)
 
 	return requiredImages, nil
 }

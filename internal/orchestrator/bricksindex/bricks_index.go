@@ -222,10 +222,13 @@ func Load(platform platform.Platform, path *paths.Path) (*BricksIndex, error) {
 			yamlIndex.Bricks[i].ComposeFile = baseCompose
 		}
 
-		if ports, err := extractPortsFromComposeFile(yamlIndex.Bricks[i].ComposeFile); err == nil {
-			yamlIndex.Bricks[i].containerPorts = ports
-		} else {
-			slog.Warn("cannot extract ports from compose file, skipping", "brick_id", yamlIndex.Bricks[i].ID, "error", err)
+		// Extract ports from the compose file if it exists
+		if composeFile, ok := yamlIndex.Bricks[i].GetComposeFile(); ok {
+			if ports, err := extractPortsFromComposeFile(composeFile); err == nil {
+				yamlIndex.Bricks[i].containerPorts = ports
+			} else {
+				slog.Warn("cannot extract ports from compose file, skipping", "brick_id", yamlIndex.Bricks[i].ID, "error", err)
+			}
 		}
 	}
 
@@ -249,9 +252,11 @@ func parseBrickID(brickID string) (namespace, name string, err error) {
 }
 
 func extractPortsFromComposeFile(composeFile *paths.Path) ([]string, error) {
+	var ports []string
+
 	f, err := composeFile.Open()
 	if err != nil {
-		return nil, err
+		return ports, err
 	}
 	defer f.Close()
 
@@ -261,10 +266,9 @@ func extractPortsFromComposeFile(composeFile *paths.Path) ([]string, error) {
 		} `yaml:"services"`
 	}
 	if err := yaml.NewDecoder(f).Decode(&compose); err != nil {
-		return nil, err
+		return ports, err
 	}
 
-	var ports []string
 	for _, service := range compose.Services {
 		for _, portStr := range service.Ports {
 			if strings.Contains(portStr, ":") {
@@ -276,5 +280,6 @@ func extractPortsFromComposeFile(composeFile *paths.Path) ([]string, error) {
 			}
 		}
 	}
+
 	return ports, nil
 }

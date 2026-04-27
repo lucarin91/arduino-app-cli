@@ -108,7 +108,7 @@ func GetBrickPortInfoByID(bricks []app.Brick, bricksIndex *bricksindex.BricksInd
 			return nil, fmt.Errorf("brick %q not found in the index", brick.ID)
 		}
 		brickInfoByID[brick.ID] = BrickPortInfo{
-			Ports:           brickData.Ports,
+			Ports:           brickData.GetPorts(),
 			RequiresDisplay: brickData.RequiresDisplay,
 		}
 	}

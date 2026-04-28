@@ -97,6 +97,7 @@ func (a *ArduinoPlatformUpdater) ListUpgradablePackages(ctx context.Context, _ f
 	platforms, err := srv.PlatformSearch(ctx, &rpc.PlatformSearchRequest{
 		Instance:          inst,
 		ManuallyInstalled: true,
+		SearchArgs:        a.platform.PlatformID,
 	})
 	if err != nil {
 		return nil, err

@@ -91,8 +91,12 @@ func (m *Manager) ListUpgradablePackages(ctx context.Context, matcher func(Upgra
 		debPkgs     []UpgradablePackage
 		arduinoPkgs []UpgradablePackage
 	)
-
 	g.Go(func() error {
+		now := time.Now()
+		defer func() {
+			slog.Debug("Debian package check completed", slog.Duration("duration", time.Since(now)), slog.Int("packages_found", len(debPkgs)))
+		}()
+
 		pkgs, err := m.debUpdateService.ListUpgradablePackages(ctx, matcher)
 		if err != nil {
 			return err
@@ -102,6 +106,11 @@ func (m *Manager) ListUpgradablePackages(ctx context.Context, matcher func(Upgra
 	})
 
 	g.Go(func() error {
+		now := time.Now()
+		defer func() {
+			slog.Debug("arduino platform check completed", slog.Duration("duration", time.Since(now)), slog.Int("packages_found", len(debPkgs)))
+		}()
+
 		pkgs, err := m.arduinoPlatformUpdateService.ListUpgradablePackages(ctx, matcher)
 		if err != nil {
 			return err

@@ -79,7 +79,6 @@ func (a *ArduinoPlatformUpdater) ListUpgradablePackages(ctx context.Context, _ f
 	streamLibIndex, _ := commands.UpdateLibrariesIndexStreamResponseToCallbackFunction(ctx, func(curr *rpc.DownloadProgress) {
 		slog.Debug("downloading library index", "progress", curr.GetMessage())
 	})
-
 	req := &rpc.UpdateLibrariesIndexRequest{Instance: inst}
 	if err := srv.UpdateLibrariesIndex(req, streamLibIndex); err != nil {
 		slog.Warn("error updating library index, skipping", slog.String("error", err.Error()))
@@ -103,8 +102,11 @@ func (a *ArduinoPlatformUpdater) ListUpgradablePackages(ctx context.Context, _ f
 		return nil, err
 	}
 
+	fmt.Printf("Found %d platforms\n", len(platforms.GetSearchOutput()))
+
 	var platformSummary *rpc.PlatformSummary
 	for _, v := range platforms.GetSearchOutput() {
+		fmt.Printf("Platform: %s, Installed version: %s, Latest version: %s\n", v.GetMetadata().GetId(), v.GetInstalledVersion(), v.GetLatestRelease().GetVersion())
 		if v.GetMetadata().GetId() == a.platform.PlatformID {
 			platformSummary = v
 			break

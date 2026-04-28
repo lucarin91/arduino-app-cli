@@ -50,9 +50,7 @@ func NewArduinoPlatformUpdater(platform platform.Platform, versionConstraint sem
 
 // ListUpgradablePackages implements ServiceUpdater.
 func (a *ArduinoPlatformUpdater) ListUpgradablePackages(ctx context.Context, _ func(update.UpgradablePackage) bool) ([]update.UpgradablePackage, error) {
-	if !a.lock.TryLock() {
-		return nil, update.ErrOperationAlreadyInProgress
-	}
+	a.lock.Lock()
 	defer a.lock.Unlock()
 
 	logrus.SetLevel(logrus.ErrorLevel) // Reduce the log level of arduino-cli
@@ -177,9 +175,7 @@ func selectBestVersion(available []string, installed *semver.Version, constraint
 
 // UpgradePackages implements ServiceUpdater.
 func (a *ArduinoPlatformUpdater) UpgradePackages(ctx context.Context, packages []update.PackageInfo, eventCB update.EventCallback) error {
-	if !a.lock.TryLock() {
-		return update.ErrOperationAlreadyInProgress
-	}
+	a.lock.Lock()
 	defer a.lock.Unlock()
 
 	if len(packages) == 0 {

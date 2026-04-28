@@ -50,9 +50,7 @@ func New() *Service {
 // It filters the packages using the provided matcher function.
 // It returns a slice of UpgradablePackage or an error if the command fails.
 func (s *Service) ListUpgradablePackages(ctx context.Context, matcher func(update.UpgradablePackage) bool) ([]update.UpgradablePackage, error) {
-	if !s.lock.TryLock() {
-		return nil, update.ErrOperationAlreadyInProgress
-	}
+	s.lock.Lock()
 	defer s.lock.Unlock()
 
 	// Attempt to fix dpkg database in case an upgrade was interrupted in the middle.
@@ -76,10 +74,7 @@ func (s *Service) ListUpgradablePackages(ctx context.Context, matcher func(updat
 // It publishes events to subscribers during the upgrade process.
 // It returns an error if the upgrade is already in progress or if the upgrade command fails.
 func (s *Service) UpgradePackages(ctx context.Context, packages []update.PackageInfo, eventCB update.EventCallback) error {
-	if !s.lock.TryLock() {
-		return update.ErrOperationAlreadyInProgress
-	}
-
+	s.lock.Lock()
 	defer s.lock.Unlock()
 
 	// At the end of the upgrade, always try to restart the services (that need it).

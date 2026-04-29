@@ -173,16 +173,6 @@ func (m *Manager) UpgradePackages(ctx context.Context, pkgs []UpgradablePackage)
 // Subscribe creates a new channel for receiving APT events.
 func (b *Manager) Subscribe() chan Event {
 	eventCh := make(chan Event, 100)
-
-	// return a closed channel if there isn't an update in progress, to avoid subscribers to wait for events that will never come.
-	b.isUgradingMutex.RLock()
-	if !b.isUpgrading {
-		defer b.isUgradingMutex.RUnlock()
-		close(eventCh)
-		return eventCh
-	}
-	b.isUgradingMutex.RUnlock()
-
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.subs[eventCh] = struct{}{}

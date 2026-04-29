@@ -76,6 +76,7 @@ func NewManager(debUpdateService ServiceUpdater, arduinoPlatformUpdateService Se
 }
 
 func (m *Manager) ListUpgradablePackages(ctx context.Context, matcher func(UpgradablePackage) bool) ([]UpgradablePackage, error) {
+	// Atomically check if an upgrade operation is already in progress. See https://github.com/arduino/arduino-app-cli/issues/381.
 	if m.isUpgrading.Load() {
 		return nil, ErrOperationAlreadyInProgress
 	}

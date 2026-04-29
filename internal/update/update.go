@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -57,8 +58,8 @@ type ServiceUpdater interface {
 }
 
 type Manager struct {
-	isUgradingMutex              sync.RWMutex
-	isUpgrading                  bool
+	lock                         sync.Mutex
+	isUpgrading                  atomic.Bool
 	debUpdateService             ServiceUpdater
 	arduinoPlatformUpdateService ServiceUpdater
 
@@ -75,12 +76,9 @@ func NewManager(debUpdateService ServiceUpdater, arduinoPlatformUpdateService Se
 }
 
 func (m *Manager) ListUpgradablePackages(ctx context.Context, matcher func(UpgradablePackage) bool) ([]UpgradablePackage, error) {
-	m.isUgradingMutex.RLock()
-	if m.isUpgrading {
-		defer m.isUgradingMutex.RUnlock()
+	if m.isUpgrading.Load() {
 		return nil, ErrOperationAlreadyInProgress
 	}
-	m.isUgradingMutex.RUnlock()
 
 	// Make sure to be connected to the internet, before checking for updates.
 	// This is needed because the checks below work also when offline (using cached data).
@@ -136,19 +134,14 @@ func (m *Manager) UpgradePackages(ctx context.Context, pkgs []UpgradablePackage)
 		}
 	}
 
-	m.isUgradingMutex.Lock()
-	defer m.isUgradingMutex.Unlock()
-	if m.isUpgrading {
+	if !m.lock.TryLock() {
 		return ErrOperationAlreadyInProgress
 	}
-	m.isUpgrading = true
-
+	m.isUpgrading.Store(true)
 	go func() {
-		defer func() {
-			m.isUgradingMutex.Lock()
-			defer m.isUgradingMutex.Unlock()
-			m.isUpgrading = false
-		}()
+		defer m.lock.Unlock()
+		defer m.isUpgrading.Store(false)
+
 		// We are launching on purpose the update sequentially. The reason is that
 		// the deb pkgs restart the orchestrator, and if we run in parallel the
 		// update of the cores we will end up with inconsistent state, or

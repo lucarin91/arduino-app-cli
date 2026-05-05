@@ -79,7 +79,7 @@ func (o SystemInitOptions) Validate() error {
 // SystemInit pulls all the docker images needed for the current version of the software to run and the
 // sketch libraries used in the example apps. Can be used to pre-install docker images/libraries on an
 // empty system, or to update all the docker images/libraries that need it.
-func SystemInit(ctx context.Context, cfg config.Configuration, bricksindex *bricksindex.BricksIndex, servicesindex *servicesindex.ServicesIndex, docker *command.DockerCli, options SystemInitOptions) error {
+func SystemInit(ctx context.Context, cfg config.Configuration, platform platform.Platform, bricksindex *bricksindex.BricksIndex, servicesindex *servicesindex.ServicesIndex, docker *command.DockerCli, options SystemInitOptions) error {
 	if err := options.Validate(); err != nil {
 		return err
 	}
@@ -111,7 +111,7 @@ func SystemInit(ctx context.Context, cfg config.Configuration, bricksindex *bric
 	}
 
 	if downloadPlatformAndLibs {
-		if err := downloadLibsAndPlatformsUsedInExamples(ctx, cfg, progressCB); err != nil {
+		if err := downloadLibsAndPlatformsUsedInExamples(ctx, cfg, platform, progressCB); err != nil {
 			return fmt.Errorf("failed to download libs and platforms used in examples: %w", err)
 		}
 	}
@@ -475,7 +475,7 @@ func removeDanglingNetworks(ctx context.Context, docker dockerClient.APIClient) 
 	return counter, nil
 }
 
-func downloadLibsAndPlatformsUsedInExamples(ctx context.Context, cfg config.Configuration, progressCB initProgressCallback) error {
+func downloadLibsAndPlatformsUsedInExamples(ctx context.Context, cfg config.Configuration, platform platform.Platform, progressCB initProgressCallback) error {
 	// Start an Arduino Core Server RPC server
 	logrus.SetOutput(io.Discard) // Suppress logs from Arduino CLI
 	var cliInstance *rpc.Instance
@@ -562,7 +562,7 @@ func downloadLibsAndPlatformsUsedInExamples(ctx context.Context, cfg config.Conf
 
 	// Download libraries used in each example app
 	for _, appPath := range exampleAppsPath {
-		if err := downloadSketchLibsUsedInApp(ctx, appPath, cli, cliInstance, downloadProgressCB); err != nil {
+		if err := downloadSketchLibsUsedInApp(ctx, appPath, platform, cli, cliInstance, downloadProgressCB); err != nil {
 			return fmt.Errorf("could not download libs in app %s: %w", appPath, err)
 		}
 	}
@@ -570,12 +570,19 @@ func downloadLibsAndPlatformsUsedInExamples(ctx context.Context, cfg config.Conf
 	return nil
 }
 
-func downloadSketchLibsUsedInApp(ctx context.Context, appPath *paths.Path, cli rpc.ArduinoCoreServiceServer, cliInstance *rpc.Instance, downloadProgressCB func(*rpc.DownloadProgress)) error {
+func downloadSketchLibsUsedInApp(ctx context.Context, appPath *paths.Path, platform platform.Platform, cli rpc.ArduinoCoreServiceServer, cliInstance *rpc.Instance, downloadProgressCB func(*rpc.DownloadProgress)) error {
 	// Open the app to get the sketch path
 	app, err := app.Load(appPath)
 	if err != nil {
 		return err
 	}
+
+	if ok, err := migrateRemoveRouterBridgeIfNeeded(ctx, platform, app); err != nil {
+		slog.Warn("Failed to migrate app to remove router bridge", "app", appPath, "error", err)
+	} else if ok {
+		slog.Info("App migrated, RouterBridge has been removed successfully", "app", appPath)
+	}
+
 	sketchPath, ok := app.GetSketchPath()
 	if !ok {
 		return nil

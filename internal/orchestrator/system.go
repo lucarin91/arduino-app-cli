@@ -580,7 +580,7 @@ func downloadSketchLibsUsedInApp(ctx context.Context, appPath *paths.Path, platf
 	if ok, err := migrateRemoveRouterBridgeIfNeeded(ctx, platform, app); err != nil {
 		slog.Warn("Failed to migrate app to remove router bridge", "app", appPath, "error", err)
 	} else if ok {
-		slog.Info("App migrated to remove router bridge", "app", appPath)
+		slog.Info("App migrated, RouterBridge has been removed successfully", "app", appPath)
 	}
 
 	sketchPath, ok := app.GetSketchPath()

@@ -19,6 +19,7 @@ package bricksindex
 
 import (
 	"os"
+	"slices"
 	"testing"
 
 	"github.com/arduino/go-paths-helper"
@@ -270,7 +271,7 @@ func TestBricksIndexYAMLFormats(t *testing.T) {
 				require.Contains(t, err.Error(), tc.expectedError)
 			} else {
 				require.NoError(t, err)
-				assert.True(t, cmp.Equal(index.BuiltInBricks, tc.expectedBricks, cmpopts.IgnoreFields(Brick{}, "FullPath", "Source", "ComposeFile", "ReadmeFile", "ExamplesPath", "DocsAPIPath")), cmp.Diff(index.BuiltInBricks, tc.expectedBricks, cmpopts.IgnoreFields(Brick{}, "Source", "ComposeFile", "ReadmeFile", "ExamplesPath", "DocsAPIPath")))
+				assert.Empty(t, cmp.Diff(index.BuiltInBricks, tc.expectedBricks, cmpopts.IgnoreFields(Brick{}, "FullPath", "Source", "ComposeFile", "ReadmeFile", "ExamplesPath", "DocsAPIPath", "containerPorts")))
 			}
 		})
 	}
@@ -301,6 +302,9 @@ func TestLoadBrickYamlBrickIndex(t *testing.T) {
 		api, found := brick.GetApiDocPath()
 		require.True(t, found)
 		require.Equal(t, paths.New("testdata/0.4.8/api-docs/arduino/app_bricks/a-good-brick/API.md"), api)
+
+		ports := brick.GetPorts()
+		require.Equal(t, []string{"6000", "8080"}, ports)
 	})
 
 	t.Run("find a brick in local bricks", func(t *testing.T) {
@@ -415,6 +419,83 @@ func TestListBricksSupportedBoard(t *testing.T) {
 			got := b.ListBricks()
 			for i := range got {
 				require.Equal(t, tt.wantBricks[i].ID, got[i].ID)
+			}
+		})
+	}
+}
+
+func TestExtractPortsFromComposeFile(t *testing.T) {
+	testCases := []struct {
+		name      string
+		content   string
+		want      []string
+		expectErr bool
+	}{
+		{
+			name: "basic",
+			content: `
+version: "3"
+services:
+  web:
+    ports:
+      - "8080:80"
+      - "443:443"
+  db:
+    ports:
+      - "5432"
+      - "127.0.0.1:15432:5432"
+  cache:
+    ports:
+      - "6379"
+      - "6380:6380"
+  multi:
+    ports:
+      - "0.0.0.0:9000:9000/tcp"
+      - "10000:10000"
+`,
+			want:      []string{"8080", "443", "5432", "15432", "6379", "6380", "9000", "10000"},
+			expectErr: false,
+		},
+		{
+			name: "no_ports",
+			content: `
+version: "3"
+services:
+  web:
+    image: nginx
+  db:
+    image: postgres
+`,
+			want:      nil,
+			expectErr: false,
+		},
+		{
+			name: "invalid_yaml",
+			content: `
+version: "3"
+services
+  web:
+    ports: [8080:80]
+`,
+			want:      nil,
+			expectErr: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			tmpFile := paths.New(t.TempDir()).Join("compose.yaml")
+			err := tmpFile.WriteFile([]byte(tc.content))
+			require.NoError(t, err)
+
+			got, err := extractPortsFromComposeFile(tmpFile)
+			if tc.expectErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				slices.Sort(tc.want)
+				slices.Sort(got)
+				assert.Equal(t, tc.want, got)
 			}
 		})
 	}

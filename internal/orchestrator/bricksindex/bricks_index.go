@@ -102,6 +102,8 @@ type Brick struct {
 	ReadmeFile   *paths.Path `yaml:"-"` // README.md file path, optional
 	ExamplesPath *paths.Path `yaml:"-"` // code examples folder path, optional
 	DocsAPIPath  *paths.Path `yaml:"-"` // API docs file path, optional
+
+	containerPorts []string `yaml:"-"` // Ports extracted from the compose file, optional
 }
 
 func (b Brick) GetComposeFile() (*paths.Path, bool) {
@@ -163,6 +165,14 @@ func (b Brick) GetDefaultVariables() iter.Seq2[string, string] {
 	}
 }
 
+func (b Brick) GetPorts() []string {
+	ports := make([]string, 0, len(b.Ports)+len(b.containerPorts))
+	ports = append(ports, b.Ports...)
+	ports = append(ports, b.containerPorts...)
+	slices.Sort(ports)
+	return slices.Compact(ports)
+}
+
 type YamlBricksIndex struct {
 	Bricks []Brick `yaml:"bricks"`
 }
@@ -185,6 +195,7 @@ func Load(platform platform.Platform, path *paths.Path) (*BricksIndex, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	for i := range yamlIndex.Bricks {
 		namespace, brickName, err := parseBrickID(yamlIndex.Bricks[i].ID)
 		if err != nil {
@@ -210,6 +221,15 @@ func Load(platform platform.Platform, path *paths.Path) (*BricksIndex, error) {
 		} else if baseCompose.Exist() {
 			yamlIndex.Bricks[i].ComposeFile = baseCompose
 		}
+
+		// Extract ports from the compose file if it exists
+		if composeFile, ok := yamlIndex.Bricks[i].GetComposeFile(); ok {
+			if ports, err := extractPortsFromComposeFile(composeFile); err == nil {
+				yamlIndex.Bricks[i].containerPorts = ports
+			} else {
+				slog.Warn("cannot extract ports from compose file, skipping", "brick_id", yamlIndex.Bricks[i].ID, "error", err)
+			}
+		}
 	}
 
 	yamlIndex.Bricks = slices.DeleteFunc(yamlIndex.Bricks, func(brick Brick) bool {
@@ -229,4 +249,37 @@ func parseBrickID(brickID string) (namespace, name string, err error) {
 		return "", "", errors.New("invalid ID")
 	}
 	return namespace, brickName, nil
+}
+
+func extractPortsFromComposeFile(composeFile *paths.Path) ([]string, error) {
+	var ports []string
+
+	f, err := composeFile.Open()
+	if err != nil {
+		return ports, err
+	}
+	defer f.Close()
+
+	var compose struct {
+		Services map[string]struct {
+			Ports []string `yaml:"ports,omitempty"`
+		} `yaml:"services"`
+	}
+	if err := yaml.NewDecoder(f).Decode(&compose); err != nil {
+		return ports, err
+	}
+
+	for _, service := range compose.Services {
+		for _, portStr := range service.Ports {
+			if strings.Contains(portStr, ":") {
+				parts := strings.Split(portStr, ":")
+				hostPort := parts[len(parts)-2] // Extract the host port (the one before the last colon)
+				ports = append(ports, hostPort)
+			} else {
+				ports = append(ports, portStr)
+			}
+		}
+	}
+
+	return ports, nil
 }

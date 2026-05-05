@@ -74,9 +74,8 @@ func buildAppPortResponse(appPorts []int, brickInfoMap map[string]BrickPortInfo)
 
 	for _, p := range appPorts {
 		response.Ports = append(response.Ports, port{
-			Port:        strconv.Itoa(p),
-			Source:      "app.yaml",
-			ServiceName: "webview",
+			Port:   strconv.Itoa(p),
+			Source: "app.yaml",
 		})
 	}
 
@@ -108,7 +107,7 @@ func GetBrickPortInfoByID(bricks []app.Brick, bricksIndex *bricksindex.BricksInd
 			return nil, fmt.Errorf("brick %q not found in the index", brick.ID)
 		}
 		brickInfoByID[brick.ID] = BrickPortInfo{
-			Ports:           brickData.Ports,
+			Ports:           brickData.GetPorts(),
 			RequiresDisplay: brickData.RequiresDisplay,
 		}
 	}

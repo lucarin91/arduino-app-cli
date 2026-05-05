@@ -1,1 +1,4 @@
-# i-am-a-compose-file
+services:
+  brick:
+    ports:
+      - "8080:8080"

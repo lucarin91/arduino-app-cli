@@ -110,7 +110,12 @@ func SystemInit(ctx context.Context, cfg config.Configuration, platform platform
 		downloadDockerImages = true
 	}
 
+	if err := installPlatformPackage(ctx, platform, stdout); err != nil {
+		slog.Error("failed to install platform package", "error", err)
+	}
+
 	if downloadPlatformAndLibs {
+		fmt.Fprintf(stdout, "Downloading libs and platforms used in examples ...\n")
 		if err := downloadLibsAndPlatformsUsedInExamples(ctx, cfg, platform, progressCB); err != nil {
 			return fmt.Errorf("failed to download libs and platforms used in examples: %w", err)
 		}
@@ -127,6 +132,7 @@ func SystemInit(ctx context.Context, cfg config.Configuration, platform platform
 }
 
 func downloadSupportedImages(ctx context.Context, cfg config.Configuration, brickindex *bricksindex.BricksIndex, servicesindex *servicesindex.ServicesIndex, docker *command.DockerCli, stdout io.Writer) error {
+	fmt.Fprintf(stdout, "Pulling the latest docker images ...\n")
 	imagesToPreinstall := []string{cfg.PythonImage}
 	brickImages, err := getAllSupportedBrickImages(brickindex, servicesindex)
 	if err != nil {
@@ -414,7 +420,7 @@ func removeImage(ctx context.Context, docker dockerClient.APIClient, imageName s
 	return size, nil
 }
 
-// imgages required by the system
+// images required by the system
 func getRequiredImages(cfg config.Configuration, bricksindex *bricksindex.BricksIndex, servicesindex *servicesindex.ServicesIndex) ([]string, error) {
 	bricksContainers, err := getAllSupportedBrickImages(bricksindex, servicesindex)
 	if err != nil {
@@ -473,6 +479,34 @@ func removeDanglingNetworks(ctx context.Context, docker dockerClient.APIClient) 
 	}
 
 	return counter, nil
+}
+
+func installPlatformPackage(ctx context.Context, plat platform.Platform, stdout io.Writer) error {
+	var packageName string
+
+	switch plat.BoardName {
+	case "unoq":
+		packageName = "arduino-unoq"
+	case "ventunoq":
+		packageName = "arduino-ventunoq"
+	default:
+		fmt.Fprintf(stdout, "no platform-specific debian package to install for board '%s'\n", plat.BoardName)
+		return nil
+	}
+
+	fmt.Fprintf(stdout, "Installing package '%s'\n", packageName)
+
+	cmd, err := paths.NewProcess(nil, "sudo", "apt-get", "install", "-y", packageName)
+	if err != nil {
+		return err
+	}
+	cmd.RedirectStderrTo(stdout)
+	cmd.RedirectStdoutTo(stdout)
+
+	if err := cmd.RunWithinContext(ctx); err != nil {
+		return err
+	}
+	return nil
 }
 
 func downloadLibsAndPlatformsUsedInExamples(ctx context.Context, cfg config.Configuration, platform platform.Platform, progressCB initProgressCallback) error {

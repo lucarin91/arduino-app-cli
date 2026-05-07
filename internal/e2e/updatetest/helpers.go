@@ -54,15 +54,13 @@ func fetchDebPackageLatest(t *testing.T, path, repo string) string {
 		log.Fatalf("command failed: %v\nOutput: %s", err, output)
 	}
 
-	fmt.Println(string(output))
-
 	fields := strings.Fields(string(output))
 	if len(fields) == 0 {
 		log.Fatal("could not parse tag from gh release list output")
 	}
 	tag := fields[0]
 
-	fmt.Println("Detected tag:", tag)
+	fmt.Println("Repo:", repo, "Detected tag:", tag)
 	cmd2 := exec.Command(
 		"gh", "release", "download",
 		tag,
@@ -122,21 +120,35 @@ func genMajorTag(t *testing.T, tag string) string {
 func genMinorTag(t *testing.T, tag string) string {
 	t.Helper()
 
+	buildVersion := func(major, minor, patch string) string {
+		newTag := strings.Join([]string{major, minor, patch}, ".")
+		if !strings.HasPrefix(newTag, "v") {
+			newTag = "v" + newTag
+		}
+		return newTag
+	}
+
 	parts := strings.Split(tag, ".")
-	last := parts[len(parts)-1]
-
-	lastNum, _ := strconv.Atoi(strings.TrimPrefix(last, "v"))
-	if lastNum > 0 {
-		lastNum--
+	if len(parts) != 3 {
+		log.Fatalf("invalid tag format: %s", tag)
 	}
+	majorPart := parts[0]
+	minorPart := parts[1]
+	patchPart := parts[2]
 
-	parts[len(parts)-1] = strconv.Itoa(lastNum)
-	newTag := strings.Join(parts, ".")
-
-	if !strings.HasPrefix(newTag, "v") {
-		newTag = "v" + newTag
+	if patchNum, _ := strconv.Atoi(patchPart); patchNum > 0 {
+		patchNum--
+		return buildVersion(majorPart, minorPart, strconv.Itoa(patchNum))
 	}
-	return newTag
+	if minorNum, _ := strconv.Atoi(minorPart); minorNum > 0 {
+		minorNum--
+		return buildVersion(majorPart, strconv.Itoa(minorNum), "0")
+	}
+	if majorNum, _ := strconv.Atoi(strings.TrimPrefix(majorPart, "v")); majorNum > 0 {
+		majorNum--
+		return buildVersion(strconv.Itoa(majorNum), "9", "0")
+	}
+	return buildVersion(parts[0], parts[1], parts[2])
 }
 
 func buildDockerImage(t *testing.T, dockerfile, name, arch string) {
@@ -218,7 +230,7 @@ func runSystemUpdate(t *testing.T, containerName string) {
 		"docker", "exec",
 		"--user", "arduino",
 		containerName,
-		"arduino-app-cli", "system", "update", "--yes",
+		"arduino-app-cli", "system", "update", "--only-arduino", "--yes",
 	)
 
 	cmd.Stderr = os.Stderr

@@ -14,7 +14,6 @@ import (
 
 	"github.com/arduino/arduino-app-cli/internal/orchestrator/app"
 	"github.com/arduino/arduino-app-cli/internal/orchestrator/bricksindex"
-	"github.com/arduino/arduino-app-cli/internal/orchestrator/peripherals"
 	"github.com/arduino/arduino-app-cli/internal/orchestrator/servicesindex"
 	"github.com/arduino/arduino-app-cli/internal/platform"
 
@@ -111,13 +110,7 @@ bricks:
 		"FOO": "bar",
 	}
 
-	devices := peripherals.AvailableDevices{
-		DevicePaths:    []string{},
-		HasGPUDevice:   true,
-		HasSoundDevice: false,
-		HasVideoDevice: true,
-	}
-	err = generateMainComposeFile(&app, bricksIndex, servicesIndex, "app-bricks:python-apps-base:dev-latest", cfg, env, unkownPlatform, devices)
+	err = generateMainComposeFile(&app, bricksIndex, servicesIndex, "app-bricks:python-apps-base:dev-latest", cfg, env, unkownPlatform)
 
 	// Validate that the main compose file and overrides are created
 	require.NoError(t, err, "Failed to generate main compose file")
@@ -137,7 +130,6 @@ bricks:
 	err = yaml.Unmarshal(overridesContent, &content)
 	require.Nil(t, err, "Failed to unmarshal overrides content")
 	require.NotNil(t, content.Services["ei-video-obj-detection-runner"], "Override for ei-video-obj-detection-runner should exist")
-	require.NotNil(t, content.Services["ei-video-obj-detection-runner"]["devices"], "Override for ei-video-obj-detection-runner devices should exist")
 	require.Equal(t, "bar", content.Services["ei-video-obj-detection-runner"]["environment"].(map[string]any)["FOO"])
 }
 
@@ -375,19 +367,12 @@ services:
 		err := fileComposePath.Join("brick_compose.yaml").WriteFile([]byte(dependsOnFromStrings))
 		require.NoError(t, err)
 
-		devices := peripherals.AvailableDevices{
-			DevicePaths:    []string{},
-			HasGPUDevice:   true,
-			HasSoundDevice: false,
-			HasVideoDevice: true,
-		}
-
 		// Reload index after adding compose file.
 		bricksIndex, err := bricksindex.Load(platform.GetPlatform(nil), cfg.AssetsDir())
 		require.NoError(t, err)
 
 		// Run the provision function to generate the main compose file
-		err = generateMainComposeFile(&app, bricksIndex, servicesIndex, "app-bricks:python-apps-base:dev-latest", cfg, env, unkownPlatform, devices)
+		err = generateMainComposeFile(&app, bricksIndex, servicesIndex, "app-bricks:python-apps-base:dev-latest", cfg, env, unkownPlatform)
 		require.NoError(t, err, "Failed to generate main compose file")
 		composeFilePath := paths.New(tempDirectory).Join(".cache").Join("app-compose.yaml")
 		require.True(t, composeFilePath.Exist(), "Main compose file should exist")
@@ -436,19 +421,12 @@ services:
 		err = fileComposePath.Join("brick_compose.yaml").WriteFile([]byte(dependsOnFromStrings))
 		require.NoError(t, err)
 
-		devices := peripherals.AvailableDevices{
-			DevicePaths:    []string{},
-			HasGPUDevice:   true,
-			HasSoundDevice: false,
-			HasVideoDevice: true,
-		}
-
 		// Reload index after adding compose file.
 		bricksIndex, err := bricksindex.Load(platform.GetPlatform(nil), cfg.AssetsDir())
 		require.NoError(t, err)
 
 		// Run the provision function to generate the main compose file
-		err = generateMainComposeFile(&app, bricksIndex, servicesIndex, "app-bricks:python-apps-base:dev-latest", cfg, env, unkownPlatform, devices)
+		err = generateMainComposeFile(&app, bricksIndex, servicesIndex, "app-bricks:python-apps-base:dev-latest", cfg, env, unkownPlatform)
 		require.NoError(t, err, "Failed to generate main compose file")
 		composeFilePath := paths.New(tempDirectory).Join(".cache").Join("app-compose.yaml")
 		require.True(t, composeFilePath.Exist(), "Main compose file should exist")
@@ -565,14 +543,8 @@ services:
 		err := serviceComposeFilePath.WriteFile([]byte(dependsOnFromStrings))
 		require.NoError(t, err)
 
-		availableDevices := peripherals.AvailableDevices{
-			DevicePaths:    []string{},
-			HasGPUDevice:   true,
-			HasSoundDevice: false,
-			HasVideoDevice: true,
-		}
 		// Run the provision function to generate the main compose file
-		err = generateMainComposeFile(&app, bricksIndex, servicesIndex, "app-bricks:python-apps-base:dev-latest", cfg, env, unkownPlatform, availableDevices)
+		err = generateMainComposeFile(&app, bricksIndex, servicesIndex, "app-bricks:python-apps-base:dev-latest", cfg, env, unkownPlatform)
 		require.NoError(t, err, "Failed to generate main compose file")
 		composeFilePath := paths.New(tempDirectory).Join(".cache").Join("app-compose.yaml")
 		require.True(t, composeFilePath.Exist(), "Main compose file should exist")
@@ -580,7 +552,6 @@ services:
 		// Extract services from the compose file to prepare override generation
 		svcInfo, err := extractServicesFromComposeFile(serviceComposeFilePath)
 		require.NoError(t, err)
-		devices := []string{"/dev/ttyUSB0:/dev/ttyUSB0"}
 
 		user := "1000:1000"
 
@@ -588,7 +559,7 @@ services:
 
 		// Generate overrides file
 		overrideComposeFile := paths.New(tempDirectory).Join(".cache").Join("app-compose-overrides.yaml")
-		err = generateServicesOverrideFile(&app, svcInfo, devices, user, groups, overrideComposeFile, env)
+		err = generateServicesOverrideFile(&app, svcInfo, user, groups, overrideComposeFile, env, nil)
 		require.NoError(t, err)
 
 		// load and validate override file content
@@ -686,7 +657,7 @@ bricks:
 		"FOO": "bar",
 	}
 
-	err = generateMainComposeFile(&app, bricksIndex, servicesIndex, "app-bricks:python-apps-base:dev-latest", cfg, env, unkownPlatform, peripherals.AvailableDevices{})
+	err = generateMainComposeFile(&app, bricksIndex, servicesIndex, "app-bricks:python-apps-base:dev-latest", cfg, env, unkownPlatform)
 
 	// Validate that the main compose file and overrides are created
 	require.NoError(t, err, "Failed to generate main compose file")

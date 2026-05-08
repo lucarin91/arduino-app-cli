@@ -6,6 +6,7 @@
 package peripherals
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -15,13 +16,15 @@ import (
 	"strings"
 
 	"github.com/arduino/go-paths-helper"
+
+	linuxconfig "github.com/arduino/arduino-app-cli/internal/orchestrator/linuxConfig"
 )
 
 type AvailableDevices struct {
-	DevicePaths    []string
-	HasVideoDevice bool
-	HasSoundDevice bool
-	HasGPUDevice   bool
+	HasVideoDevice     bool
+	HasSoundDevice     bool
+	HasGPUDevice       bool
+	HasCSICameraDevice bool
 }
 
 type DeviceClass string
@@ -32,7 +35,7 @@ const (
 	SpeakerClass    DeviceClass = "speaker"
 )
 
-func Detect() (AvailableDevices, error) {
+func Detect(ctx context.Context) (AvailableDevices, error) {
 	res := AvailableDevices{}
 
 	deviceList, err := paths.New("/dev").ReadDir()
@@ -42,10 +45,7 @@ func Detect() (AvailableDevices, error) {
 	}
 
 	for _, p := range deviceList {
-		switch {
-		case p.HasPrefix("video"):
-			res.DevicePaths = append(res.DevicePaths, p.String())
-		case p.HasPrefix("dri"):
+		if p.HasPrefix("dri") {
 			res.HasGPUDevice = true
 		}
 	}
@@ -55,34 +55,31 @@ func Detect() (AvailableDevices, error) {
 		res.HasVideoDevice = true
 	}
 	// Verify if there are real sound devices in /dev/snd/by-id
-	if sndDev := GetSoundDevices(); len(sndDev) > 0 {
-		res.DevicePaths = append(res.DevicePaths, "/dev/snd")
+	if sndDev := GetSoundDevices(); sndDev > 0 {
 		res.HasSoundDevice = true
 	}
-	// Verify if we need to add GPU devices
-	if res.HasGPUDevice {
-		res.DevicePaths = append(res.DevicePaths, "/dev/dri")
+
+	carriers, err := linuxconfig.GetEnabledCarriers(ctx)
+	if err != nil {
+		slog.Warn("unable to get enabled devices from linux config", slog.String("error", err.Error()))
 	}
+	res.HasCSICameraDevice = HasCSICamera(carriers)
 
 	return res, nil
 }
 
-func GetSoundDevices() []string {
+func GetSoundDevices() int {
 	// Check and read /dev/snd. This fs contains only real sound devices
 	soundDevicePath := paths.New("/dev/snd/by-id")
 	if _, err := soundDevicePath.Stat(); err != nil {
-		return nil // no sound device found
+		return 0 // no sound device found
 	}
 	sndDeviceList, err := soundDevicePath.ReadDir()
 	if err != nil {
 		slog.Warn("unable to list /dev/snd/by-id", slog.String("error", err.Error()))
-		return nil
+		return 0
 	}
-	detectedDevices := []string{}
-	for _, sndD := range sndDeviceList {
-		detectedDevices = append(detectedDevices, sndD.String())
-	}
-	return detectedDevices
+	return len(sndDeviceList)
 }
 
 func GetVideoDevices() map[int]string {
@@ -173,6 +170,19 @@ func HasVirtualDevice(deviceClass DeviceClass, devices []string) bool {
 				return true
 			}
 		}
+	}
+	return false
+}
+
+func HasCSICamera(carriers []linuxconfig.Carrier) bool {
+	for _, c := range carriers {
+		if c.CarrierName != "media-carrier" {
+			continue
+		}
+		if slices.ContainsFunc(c.EnabledDevices(), func(d linuxconfig.Device) bool { return strings.Contains(d.Device, "camera") }) {
+			return true
+		}
+
 	}
 	return false
 }

@@ -12,11 +12,12 @@ import (
 	"os/exec"
 
 	"github.com/arduino/go-paths-helper"
+	"go.bug.st/f"
 )
 
 const linuxConfigTool = "arduino-linux-config"
 
-func GetEnabledCarriers(ctx context.Context) ([]string, error) {
+func GetEnabledCarriers(ctx context.Context) ([]Carrier, error) {
 	if _, err := exec.LookPath(linuxConfigTool); err != nil {
 		return nil, fmt.Errorf("arduino-linux-config tool not found in PATH: %w", err)
 	}
@@ -36,11 +37,5 @@ func GetEnabledCarriers(ctx context.Context) ([]string, error) {
 		return nil, fmt.Errorf("failed to parse JSON from 'arduino-linux-config carrier show': %w\noutput: %s", err, string(stdout))
 	}
 
-	var enabled []string
-	for _, c := range carriersStatus.Carriers {
-		if c.CurrentEnabled {
-			enabled = append(enabled, c.CarrierName)
-		}
-	}
-	return enabled, nil
+	return f.Filter(carriersStatus.Carriers, func(c Carrier) bool { return c.CurrentEnabled }), nil
 }

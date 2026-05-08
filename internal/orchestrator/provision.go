@@ -28,15 +28,15 @@ import (
 	"github.com/arduino/arduino-app-cli/internal/orchestrator/app"
 	"github.com/arduino/arduino-app-cli/internal/orchestrator/bricksindex"
 	"github.com/arduino/arduino-app-cli/internal/orchestrator/config"
-	"github.com/arduino/arduino-app-cli/internal/orchestrator/peripherals"
 	"github.com/arduino/arduino-app-cli/internal/orchestrator/servicesindex"
 	"github.com/arduino/arduino-app-cli/internal/platform"
 )
 
 type volume struct {
-	Type   string `yaml:"type"`
-	Source string `yaml:"source"`
-	Target string `yaml:"target"`
+	Type     string `yaml:"type"`
+	Source   string `yaml:"source"`
+	Target   string `yaml:"target"`
+	ReadOnly bool   `yaml:"read_only,omitempty"`
 }
 
 type dependsOnCondition struct {
@@ -49,18 +49,18 @@ type logging struct {
 }
 
 type service struct {
-	Image       string                        `yaml:"image"`
-	DependsOn   map[string]dependsOnCondition `yaml:"depends_on,omitempty"`
-	Volumes     []volume                      `yaml:"volumes"`
-	Devices     []string                      `yaml:"devices"`
-	Ports       []string                      `yaml:"ports"`
-	User        string                        `yaml:"user"`
-	GroupAdd    []uint32                      `yaml:"group_add"`
-	Entrypoint  string                        `yaml:"entrypoint"`
-	ExtraHosts  []string                      `yaml:"extra_hosts,omitempty"`
-	Labels      map[string]string             `yaml:"labels,omitempty"`
-	Environment map[string]string             `yaml:"environment,omitempty"`
-	Logging     *logging                      `yaml:"logging,omitempty"`
+	Image             string                        `yaml:"image"`
+	DependsOn         map[string]dependsOnCondition `yaml:"depends_on,omitempty"`
+	Volumes           []volume                      `yaml:"volumes"`
+	DeviceCgroupRules []string                      `yaml:"device_cgroup_rules,omitempty"`
+	Ports             []string                      `yaml:"ports"`
+	User              string                        `yaml:"user"`
+	GroupAdd          []uint32                      `yaml:"group_add"`
+	Entrypoint        string                        `yaml:"entrypoint"`
+	ExtraHosts        []string                      `yaml:"extra_hosts,omitempty"`
+	Labels            map[string]string             `yaml:"labels,omitempty"`
+	Environment       map[string]string             `yaml:"environment,omitempty"`
+	Logging           *logging                      `yaml:"logging,omitempty"`
 }
 
 type Provision struct {
@@ -114,7 +114,6 @@ func (p *Provision) App(
 	cfg config.Configuration,
 	mapped_env map[string]string,
 	platform platform.Platform,
-	devices peripherals.AvailableDevices,
 ) error {
 	if arduinoApp == nil {
 		return fmt.Errorf("provisioning failed: arduinoApp is nil")
@@ -128,7 +127,7 @@ func (p *Provision) App(
 
 	bricksIndex = bricksIndex.WithAppBricks(arduinoApp.LocalBricks)
 
-	return generateMainComposeFile(arduinoApp, bricksIndex, servicesIndex, p.pythonImage, cfg, mapped_env, platform, devices)
+	return generateMainComposeFile(arduinoApp, bricksIndex, servicesIndex, p.pythonImage, cfg, mapped_env, platform)
 }
 
 func (p *Provision) init(
@@ -211,7 +210,6 @@ func generateMainComposeFile(
 	cfg config.Configuration,
 	envs helpers.EnvVars,
 	platform platform.Platform,
-	devices peripherals.AvailableDevices,
 ) error {
 	slog.Debug("Generating main compose file for the App")
 
@@ -321,6 +319,17 @@ func generateMainComposeFile(
 			Source: app.FullPath.String(),
 			Target: "/app",
 		},
+		{
+			Type:   "bind",
+			Source: "/dev",
+			Target: "/dev",
+		},
+		{
+			Type:     "bind",
+			Source:   "/run/udev",
+			Target:   "/run/udev",
+			ReadOnly: true,
+		},
 	}
 	slog.Debug("Adding UNIX socket", slog.Any("sock", cfg.RouterSocketPath().String()), slog.Bool("exists", cfg.RouterSocketPath().Exist()))
 	if cfg.RouterSocketPath().Exist() {
@@ -329,28 +338,6 @@ func generateMainComposeFile(
 			Source: cfg.RouterSocketPath().String(),
 			Target: "/var/run/arduino-router.sock",
 		})
-	}
-
-	// provide additional devices to the container
-	if devices.HasVideoDevice {
-		// If we are adding video devices, mount also /dev/v4l if it exists to allow access to by-id/path links
-		if paths.New("/dev/v4l").Exist() {
-			volumes = append(volumes, volume{
-				Type:   "bind",
-				Source: "/dev/v4l",
-				Target: "/dev/v4l",
-			})
-		}
-	}
-	if devices.HasSoundDevice {
-		// If we are adding sound devices, mount also /dev/snd/by-id if it exists to allow access to by-id links
-		if paths.New("/dev/snd/by-id").Exist() {
-			volumes = append(volumes, volume{
-				Type:   "bind",
-				Source: "/dev/snd/by-id",
-				Target: "/dev/snd/by-id",
-			})
-		}
 	}
 
 	volumes = addLedControl(platform, volumes)
@@ -376,17 +363,20 @@ func generateMainComposeFile(
 		}
 	}
 
+	cgroupDrivers := []string{"drm", "dma_heap", "media", "video4linux", "alsa"}
+	deviceCgroupsRules := buildCgroupRules(cgroupDrivers)
+
 	mainAppCompose.Services = &mainService{
 		Main: service{
-			Image:      pythonImage,
-			Volumes:    volumes,
-			Ports:      slices.Collect(maps.Keys(ports)),
-			Devices:    devices.DevicePaths,
-			Entrypoint: "/run.sh",
-			DependsOn:  dependsOn,
-			User:       getCurrentUser(),
-			GroupAdd:   groups,
-			ExtraHosts: []string{"msgpack-rpc-router:host-gateway"},
+			Image:             pythonImage,
+			Volumes:           volumes,
+			Ports:             slices.Collect(maps.Keys(ports)),
+			DeviceCgroupRules: deviceCgroupsRules,
+			Entrypoint:        "/run.sh",
+			DependsOn:         dependsOn,
+			User:              getCurrentUser(),
+			GroupAdd:          groups,
+			ExtraHosts:        []string{"msgpack-rpc-router:host-gateway"},
 			Labels: map[string]string{
 				DockerAppLabel:     "true",
 				DockerAppMainLabel: "true",
@@ -414,7 +404,7 @@ func generateMainComposeFile(
 
 	// If there are services that require devices, we need to generate an override compose file
 	// Write additional file to override devices section in included compose files
-	if err := generateServicesOverrideFile(app, services, devices.DevicePaths, getCurrentUser(), groups, overrideComposeFile, envs); err != nil {
+	if err := generateServicesOverrideFile(app, services, getCurrentUser(), groups, overrideComposeFile, envs, deviceCgroupsRules); err != nil {
 		return err
 	}
 
@@ -498,7 +488,7 @@ func extractServicesFromComposeFile(composeFile *paths.Path) ([]serviceInfo, err
 	return services, nil
 }
 
-func generateServicesOverrideFile(arduinoApp *app.ArduinoApp, services []serviceInfo, devices []string, user string, groups []uint32, overrideComposeFile *paths.Path, envs helpers.EnvVars) error {
+func generateServicesOverrideFile(arduinoApp *app.ArduinoApp, services []serviceInfo, user string, groups []uint32, overrideComposeFile *paths.Path, envs helpers.EnvVars, deviceCgroupsRules []string) error {
 	if overrideComposeFile.Exist() {
 		if err := overrideComposeFile.Remove(); err != nil {
 			return fmt.Errorf("failed to remove existing override compose file: %w", err)
@@ -511,11 +501,12 @@ func generateServicesOverrideFile(arduinoApp *app.ArduinoApp, services []service
 	}
 
 	type serviceOverride struct {
-		User        *string           `yaml:"user,omitempty"`
-		Devices     *[]string         `yaml:"devices,omitempty"`
-		GroupAdd    *[]uint32         `yaml:"group_add,omitempty"`
-		Labels      map[string]string `yaml:"labels,omitempty"`
-		Environment map[string]string `yaml:"environment,omitempty"`
+		User              *string           `yaml:"user,omitempty"`
+		Volumes           *[]volume         `yaml:"volumes,omitempty"`
+		DeviceCgroupRules *[]string         `yaml:"device_cgroup_rules,omitempty"`
+		GroupAdd          *[]uint32         `yaml:"group_add,omitempty"`
+		Labels            map[string]string `yaml:"labels,omitempty"`
+		Environment       map[string]string `yaml:"environment,omitempty"`
 	}
 	var overrideCompose struct {
 		Services map[string]serviceOverride `yaml:"services,omitempty"`
@@ -534,7 +525,11 @@ func generateServicesOverrideFile(arduinoApp *app.ArduinoApp, services []service
 			override.User = &user
 		}
 		if svc.requireDevices {
-			override.Devices = &devices
+			override.DeviceCgroupRules = &deviceCgroupsRules
+			devVolumes := []volume{
+				{Type: "bind", Source: "/dev", Target: "/dev"},
+			}
+			override.Volumes = &devVolumes
 		}
 		override.Environment = envs
 		overrideCompose.Services[svc.name] = override
@@ -662,4 +657,40 @@ func extractVolumesFromComposeFile(additionalComposeFile string) ([]string, erro
 		volumes = append(volumes, svc.Volumes...)
 	}
 	return volumes, nil
+}
+
+func buildCgroupRules(drivers []string) []string {
+	var rules []string
+
+	for _, driver := range drivers {
+		major, err := resolveMajorNumber(driver)
+		if err != nil {
+			slog.Warn("could not resolve major number, skipping cgroup rule",
+				slog.String("driver", driver),
+				slog.Any("error", err),
+			)
+			continue
+		}
+		rules = append(rules, fmt.Sprintf("c %d:* rmw", major))
+	}
+
+	return rules
+}
+
+func resolveMajorNumber(driverName string) (int, error) {
+	content, err := os.ReadFile("/proc/devices")
+	if err != nil {
+		return 0, fmt.Errorf("failed to read /proc/devices: %w", err)
+	}
+	for _, line := range strings.Split(string(content), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 2 && fields[1] == driverName {
+			major, err := strconv.Atoi(fields[0])
+			if err != nil {
+				return 0, fmt.Errorf("failed to parse major for %s: %w", driverName, err)
+			}
+			return major, nil
+		}
+	}
+	return 0, fmt.Errorf("driver %q not found in /proc/devices", driverName)
 }

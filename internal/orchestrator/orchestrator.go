@@ -110,7 +110,7 @@ func StartApp(
 		return err
 	}
 
-	devices, err := peripherals.Detect()
+	devices, err := peripherals.Detect(ctx)
 	if err != nil {
 		return err
 	}
@@ -164,7 +164,7 @@ func StartApp(
 
 		cb(StreamMessage{progress: &Progress{Name: "python provisioning", Progress: provisionStartProgress}})
 
-		if err := provisioner.App(ctx, bricksIndex, servicesIndex, &appToStart, cfg, envs, platform, devices); err != nil {
+		if err := provisioner.App(ctx, bricksIndex, servicesIndex, &appToStart, cfg, envs, platform); err != nil {
 			return err
 		}
 
@@ -251,7 +251,10 @@ func getAppEnvironmentVariables(ctx context.Context, app app.ArduinoApp, brickIn
 	if err != nil {
 		slog.Warn("unable to get configured carriers", slog.String("error", err.Error()))
 	} else if len(mediaCarriers) > 0 {
-		envs["CONFIGURED_CARRIERS"] = strings.Join(mediaCarriers, ",")
+		carrierNames := f.Map(mediaCarriers, func(c linuxconfig.Carrier) string {
+			return c.CarrierName
+		})
+		envs["CONFIGURED_CARRIERS"] = strings.Join(carrierNames, ",")
 	}
 
 	if hostIP, err := helpers.GetHostIP(); err == nil {

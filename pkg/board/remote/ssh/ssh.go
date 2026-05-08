@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"net"
 	"path"
+	"slices"
 	"strings"
 	"sync"
 
@@ -30,8 +31,14 @@ type SSHConnection struct {
 	client *ssh.Client
 	wg     sync.WaitGroup
 
-	mu        sync.Mutex
-	Listeners []net.Listener
+	mu             sync.Mutex
+	ForwardedPorts []ForwardedPort
+}
+
+type ForwardedPort struct {
+	Listener   net.Listener
+	LocalPort  int
+	RemotePort int
 }
 
 // Ensures SSHConnection implements the RemoteConn interface at compile time.
@@ -62,6 +69,15 @@ func FromHost(user, password, address string) (*SSHConnection, error) {
 }
 
 func (a *SSHConnection) Forward(ctx context.Context, localPort int, remotePort int) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if slices.ContainsFunc(a.ForwardedPorts, func(fp ForwardedPort) bool {
+		return fp.LocalPort == localPort && fp.RemotePort == remotePort
+	}) {
+		return nil // Port already forwarded as requested
+	}
+
 	if !ports.IsAvailable(localPort) {
 		return remote.ErrPortAvailable
 	}
@@ -71,9 +87,11 @@ func (a *SSHConnection) Forward(ctx context.Context, localPort int, remotePort i
 		return err
 	}
 
-	a.mu.Lock()
-	a.Listeners = append(a.Listeners, listener)
-	a.mu.Unlock()
+	a.ForwardedPorts = append(a.ForwardedPorts, ForwardedPort{
+		Listener:   listener,
+		LocalPort:  localPort,
+		RemotePort: remotePort,
+	})
 
 	a.wg.Add(1)
 	go func() {
@@ -99,7 +117,6 @@ func (a *SSHConnection) Forward(ctx context.Context, localPort int, remotePort i
 				if err != nil {
 					slog.Warn("failed to dial remote host:", slog.Any("error", err))
 					return
-
 				}
 				defer remoteConn.Close()
 
@@ -125,13 +142,13 @@ func copyAndLog(dst io.Writer, src io.Reader) {
 func (a *SSHConnection) ForwardKillAll(ctx context.Context) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	for _, listener := range a.Listeners {
-		if err := listener.Close(); err != nil {
+	for _, fp := range a.ForwardedPorts {
+		if err := fp.Listener.Close(); err != nil {
 			return err
 		}
 	}
 	a.wg.Wait()
-	a.Listeners = make([]net.Listener, 0)
+	a.ForwardedPorts = make([]ForwardedPort, 0)
 	return nil
 }
 

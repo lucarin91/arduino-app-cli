@@ -37,9 +37,6 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Check license headers
-        run: go tool task go:check-license-headers
-
       - name: Check go mod
         run: |
           go mod tidy

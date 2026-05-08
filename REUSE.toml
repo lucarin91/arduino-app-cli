@@ -1,0 +1,56 @@
+version = 1
+
+# Debian build scripts
+[[annotations]]
+path = "debian/**"
+SPDX-FileCopyrightText = "Arduino s.r.l. and/or its affiliated companies"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# Test data and e2e Tests
+[[annotations]]
+path = [
+  "internal/e2e/**",
+  "**/testdata/**",
+]
+SPDX-FileCopyrightText = "Arduino s.r.l. and/or its affiliated companies"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# Docs
+[[annotations]]
+path = [
+  "docs/**",
+]
+SPDX-FileCopyrightText = "Arduino s.r.l. and/or its affiliated companies"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# Autogenerate file
+[[annotations]]
+path = [
+  "internal/api/edgeimpulse/client.gen.go",
+]
+SPDX-FileCopyrightText = "Arduino s.r.l. and/or its affiliated companies"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# Scripts
+[[annotations]]
+path = "scripts/**"
+SPDX-FileCopyrightText = "Arduino s.r.l. and/or its affiliated companies"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# Tool-generated or configuration files.
+[[annotations]]
+path = [
+  ".editorconfig",
+  ".golangci.yml",
+  ".gitignore",
+  ".licensed.yml",
+  "dprint.json",
+  "adbd.Dockerfile",
+  "Taskfile.yml",
+  "go.mod",
+  "go.sum",
+  "README.md",
+  "internal/api/docs/**",
+]
+SPDX-FileCopyrightText = "Arduino s.r.l. and/or its affiliated companies"
+SPDX-License-Identifier = "GPL-3.0-or-later"

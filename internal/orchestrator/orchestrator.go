@@ -745,7 +745,7 @@ func CloneApp(
 	if !originPath.Exist() {
 		return CloneAppResponse{}, ErrAppDoesntExists
 	}
-	if !originPath.Join("app.yaml").Exist() && !originPath.Join("app.yml").Exist() {
+	if !originPath.Join("app.yaml").Exist() {
 		return CloneAppResponse{}, app.ErrInvalidApp
 	}
 
@@ -792,11 +792,10 @@ func CloneApp(
 	}
 
 	if (req.Name != nil && *req.Name != "") || (req.Icon != nil && *req.Icon != "") {
-		var appYamlPath *paths.Path
-		if dstPath.Join("app.yaml").Exist() {
-			appYamlPath = dstPath.Join("app.yaml")
-		} else {
-			appYamlPath = dstPath.Join("app.yml")
+
+		appYamlPath := dstPath.Join("app.yaml")
+		if !appYamlPath.Exist() {
+			return CloneAppResponse{}, fmt.Errorf("app.yaml not found in cloned app")
 		}
 		descriptor, err := app.ParseDescriptorFile(appYamlPath)
 		if err != nil {
@@ -902,18 +901,7 @@ func EditApp(
 
 	if req.Name != nil {
 		editApp.Descriptor.Name = *req.Name
-		newPath := editApp.FullPath.Parent().Join(slug.Make(*req.Name))
-		if newPath.Exist() {
-			return ErrAppAlreadyExists
-		}
-		if err := editApp.FullPath.Rename(newPath); err != nil {
-			editErr = fmt.Errorf("failed to rename app path: %w", err)
-			return editErr
-		}
-		editApp.FullPath = newPath
-		editApp.Name = editApp.Descriptor.Name
 	}
-
 	if req.Icon != nil {
 		editApp.Descriptor.Icon = *req.Icon
 	}
@@ -924,11 +912,20 @@ func EditApp(
 	if err := editApp.Descriptor.IsValid(); err != nil {
 		return fmt.Errorf("%w: %w", app.ErrInvalidApp, err)
 	}
-	err := editApp.Save()
-	if err != nil {
-		return fmt.Errorf("failed to save app: %w", err)
+
+	if req.Name != nil {
+		newPath := editApp.FullPath.Parent().Join(slug.Make(*req.Name))
+		if newPath.Exist() {
+			return ErrAppAlreadyExists
+		}
+		if err := editApp.FullPath.Rename(newPath); err != nil {
+			return fmt.Errorf("failed to rename app path: %w", err)
+		}
+		editApp.FullPath = newPath
+		editApp.Name = editApp.Descriptor.Name
 	}
-	return nil
+
+	return editApp.Save()
 }
 
 func editAppDefaults(userApp *app.ArduinoApp, isDefault bool, cfg config.Configuration) error {

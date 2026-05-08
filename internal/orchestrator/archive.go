@@ -112,7 +112,7 @@ func zipAppToBuffer(bricksIndex *bricksindex.BricksIndex, sourcePath string, roo
 			return nil
 		}
 
-		if d.Name() == "app.yaml" || d.Name() == "app.yml" { // nolint:goconst
+		if d.Name() == "app.yaml" { // nolint:goconst
 			desc, err := app.ParseDescriptorFile(paths.New(path))
 			if err != nil {
 				return err
@@ -169,10 +169,6 @@ func ImportAppFromZip(
 		rawAppName = strings.TrimSuffix(originalZipName, filepath.Ext(originalZipName))
 	}
 
-	if err := validateAppZipContent(&r.Reader, rootPrefix); err != nil {
-		return app.ID{}, fmt.Errorf("%w:%v", ErrBadRequest, err)
-	}
-
 	appDescriptor, err := readAppDescriptorFromZip(&r.Reader, rootPrefix)
 	if err != nil {
 		return app.ID{}, fmt.Errorf("failed to read app.yaml: %w", err)
@@ -189,7 +185,7 @@ func ImportAppFromZip(
 		finalDestPath, _ = findAppPathByName(newName, cfg)
 	}
 
-	tempDestDir, err := app.MkTmpAppDir(finalDestPath.Parent())
+	tempDestDir, err := paths.MkTempDir(finalDestPath.Parent().String(), "tmp_")
 	if err != nil {
 		return app.ID{}, fmt.Errorf("unable to create temp app directory: %w", err)
 	}
@@ -201,6 +197,13 @@ func ImportAppFromZip(
 
 	if finalDestPath.Exist() {
 		return app.ID{}, ErrAppAlreadyExists
+	}
+	if !app.IsValidFolderName(finalDestPath.Base()) {
+		return app.ID{}, fmt.Errorf("root folder name %q is not valid: use only alphanumeric, underscores, dashes and spaces", finalDestPath.Base())
+	}
+	// Validate the extracted app before moving to final destination.
+	if _, err := app.Load(tempDestDir); err != nil {
+		return app.ID{}, fmt.Errorf("invalid app: %w: %v", ErrBadRequest, err)
 	}
 
 	if err := tempDestDir.Rename(finalDestPath); err != nil {
@@ -287,12 +290,11 @@ func readAppDescriptorFromZip(r *zip.Reader, rootPrefix string) (app.AppDescript
 	var descriptor app.AppDescriptor
 
 	targetAppYaml := paths.New(rootPrefix, "app.yaml")
-	targetAppYml := paths.New(rootPrefix, "app.yml")
 
 	for _, f := range r.File {
 		name := filepath.ToSlash(f.Name)
 
-		if name == targetAppYaml.String() || name == targetAppYml.String() {
+		if name == targetAppYaml.String() {
 			rc, err := f.Open()
 			if err != nil {
 				return descriptor, err
@@ -309,62 +311,6 @@ func readAppDescriptorFromZip(r *zip.Reader, rootPrefix string) (app.AppDescript
 		}
 	}
 	return descriptor, fmt.Errorf("app.yaml not found in archive")
-}
-
-// TODO implement centralized app validator to use everywhere is needed
-// validateAppZipContent checks for mandatory files respecting the rootPrefix
-func validateAppZipContent(r *zip.Reader, rootPrefix string) error {
-	hasAppYaml := false
-	hasMainPy := false
-
-	hasSketchFolder := false
-	hasSketchIno := false
-	hasSketchYaml := false
-
-	targetAppYaml := paths.New(rootPrefix, "app.yaml")
-	targetAppYml := paths.New(rootPrefix, "app.yml")
-	targetMainPy := paths.New(rootPrefix, "python/main.py")
-
-	targetSketchPrefix := paths.New(rootPrefix, "sketch").String() + "/"
-	for _, f := range r.File {
-		name := filepath.ToSlash(f.Name)
-
-		if name == targetAppYaml.String() || name == targetAppYml.String() {
-			hasAppYaml = true
-		}
-		if name == targetMainPy.String() {
-			hasMainPy = true
-		}
-
-		if strings.HasPrefix(name, targetSketchPrefix) {
-			hasSketchFolder = true
-			if name == paths.New(rootPrefix, "sketch/sketch.ino").String() {
-				hasSketchIno = true
-			}
-
-			if name == paths.New(rootPrefix, "sketch/sketch.yaml").String() {
-				hasSketchYaml = true
-			}
-		}
-	}
-
-	if !hasAppYaml {
-		return errors.New("missing app.yaml")
-	}
-	if !hasMainPy {
-		return errors.New("missing python/main.py")
-	}
-
-	if hasSketchFolder {
-		if !hasSketchIno {
-			return errors.New("sketch folder present but missing .ino file")
-		}
-		if !hasSketchYaml {
-			return errors.New("sketch folder present but missing .yaml file")
-		}
-	}
-
-	return nil
 }
 
 func redactSecrets(bricksindex *bricksindex.BricksIndex, desc *app.AppDescriptor) {
@@ -392,7 +338,7 @@ func redactSecrets(bricksindex *bricksindex.BricksIndex, desc *app.AppDescriptor
 func findZipRoot(r *zip.Reader) (string, error) {
 	for _, f := range r.File {
 		name := filepath.ToSlash(f.Name)
-		if filepath.Base(name) != "app.yaml" && filepath.Base(name) != "app.yml" {
+		if filepath.Base(name) != "app.yaml" {
 			continue
 		}
 		slashCount := strings.Count(name, "/")

@@ -159,39 +159,13 @@ func (a *SSHConnection) List(path string) ([]remote.FileInfo, error) {
 	}
 	defer session.Close()
 
-	// Run the `ls -la` command on the remote host
-	cmd := fmt.Sprintf("ls -la %s", path)
+	cmd := fmt.Sprintf("ls -laQ %q", path)
 	output, err := session.Output(cmd)
 	if err != nil {
 		return nil, err
 	}
 
-	lines := bytes.Split(output, []byte("\n"))
-	if len(lines) > 0 {
-		lines = lines[1:] // Skip the first line (header)
-	}
-
-	files := make([]remote.FileInfo, 0, len(lines))
-	for _, line := range lines {
-		line = bytes.TrimSpace(line)
-		if len(line) == 0 {
-			continue
-		}
-		parts := bytes.Fields(line)
-		if len(parts) < 9 {
-			continue
-		}
-		name := string(parts[len(parts)-1])
-		if name == "." || name == ".." {
-			continue
-		}
-		files = append(files, remote.FileInfo{
-			Name:  name,
-			IsDir: line[0] == 'd',
-		})
-	}
-
-	return files, nil
+	return remote.ParseLsOutput(bytes.NewReader(output))
 }
 
 func (a *SSHConnection) MkDirAll(path string) error {
@@ -201,7 +175,7 @@ func (a *SSHConnection) MkDirAll(path string) error {
 	}
 	defer session.Close()
 
-	cmd := fmt.Sprintf("mkdir -p %s", path)
+	cmd := fmt.Sprintf("mkdir -p %q", path)
 	if err := session.Run(cmd); err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
@@ -216,7 +190,7 @@ func (a *SSHConnection) WriteFile(r io.Reader, path string) error {
 	}
 	defer session.Close()
 
-	cmd := fmt.Sprintf("cat > %s", path)
+	cmd := fmt.Sprintf("cat > %q", path)
 	session.Stdin = r
 
 	if err := session.Run(cmd); err != nil {
@@ -232,7 +206,7 @@ func (a *SSHConnection) ReadFile(path string) (io.ReadCloser, error) {
 		return nil, err
 	}
 
-	cmd := fmt.Sprintf("cat %s", path)
+	cmd := fmt.Sprintf("cat %q", path)
 	output, err := session.StdoutPipe()
 	if err != nil {
 		return nil, err
@@ -255,7 +229,7 @@ func (a *SSHConnection) Remove(path string) error {
 	}
 	defer session.Close()
 
-	cmd := fmt.Sprintf("rm -rf %s", path)
+	cmd := fmt.Sprintf("rm -rf %q", path)
 	if err := session.Run(cmd); err != nil {
 		return fmt.Errorf("failed to remove file: %w", err)
 	}
@@ -270,7 +244,7 @@ func (a *SSHConnection) Stats(p string) (remote.FileInfo, error) {
 	}
 	defer session.Close()
 
-	cmd := fmt.Sprintf("file %s", p)
+	cmd := fmt.Sprintf("file %q", p)
 	output, err := session.Output(cmd)
 	if err != nil {
 		return remote.FileInfo{}, err

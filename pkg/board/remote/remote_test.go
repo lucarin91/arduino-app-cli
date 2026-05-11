@@ -215,19 +215,23 @@ func TestRemoteForwarder(t *testing.T) {
 			forwardPort, err := ports.GetAvailable()
 			require.NoError(t, err)
 
-			err = remote.conn.Forward(t.Context(), forwardPort, pongServerPort)
-			assert.NoError(t, err)
+			for i := range 3 {
+				t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+					err = remote.conn.Forward(t.Context(), forwardPort, pongServerPort)
+					assert.NoError(t, err)
 
-			conn, err := net.Dial("tcp", fmt.Sprintf("localhost:%d", forwardPort))
-			require.NoError(t, err)
+					conn, err := net.Dial("tcp", fmt.Sprintf("localhost:%d", forwardPort))
+					require.NoError(t, err)
 
-			buf := [128]byte{}
-			n, err := conn.Read(buf[:])
-			require.NoError(t, err)
-			require.Equal(t, "pong", string(buf[:n]))
+					buf := [128]byte{}
+					n, err := conn.Read(buf[:])
+					require.NoError(t, err, "failed to read from forwarded port %d", forwardPort)
+					require.Equal(t, "pong", string(buf[:n]))
 
-			err = conn.Close()
-			require.NoError(t, err)
+					err = conn.Close()
+					require.NoError(t, err)
+				})
+			}
 
 			err = remote.conn.ForwardKillAll(t.Context())
 			assert.NoError(t, err)

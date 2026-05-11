@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Simple TCP server that replies "pong" to every connection."""
+
 import socket
 import sys
 

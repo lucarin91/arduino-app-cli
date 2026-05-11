@@ -14,7 +14,9 @@ import (
 	"io/fs"
 	"log/slog"
 	"net"
+	"os"
 	"path"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -340,4 +342,26 @@ func (c *SSHCommand) Interactive() (io.WriteCloser, io.Reader, io.Reader, remote
 		_ = c.session.Close()
 		return nil
 	}, nil
+}
+
+func (a *SSHConnection) Push(ctx context.Context, local, remote string) error {
+	scpClient := NewScpClient(a.client)
+
+	info, err := os.Stat(local)
+	if err != nil {
+		return err
+	}
+
+	if info.IsDir() {
+		var overwrite bool
+		if filepath.Base(local) == filepath.Base(remote) {
+			if _, err := a.Stats(remote); err == nil {
+				// force overwrite of the folder if the remote exists.
+				overwrite = true
+			}
+		}
+		return scpClient.PushDir(os.DirFS(local), remote, overwrite)
+	} else {
+		return scpClient.PushFile(local, remote)
+	}
 }

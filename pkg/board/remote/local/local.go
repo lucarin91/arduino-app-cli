@@ -11,6 +11,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path/filepath"
 
 	"github.com/arduino/go-paths-helper"
 	"go.bug.st/f"
@@ -146,4 +147,63 @@ func (a *LocalCommand) Interactive() (io.WriteCloser, io.Reader, io.Reader, remo
 		}
 		return nil
 	}, nil
+}
+
+func (a *LocalConnection) Push(ctx context.Context, src string, dst string) error {
+	info, err := os.Stat(src)
+	if err != nil {
+		return fmt.Errorf("failed to stat source %q: %w", src, err)
+	}
+
+	if !info.IsDir() {
+		return copyFile(ctx, src, dst)
+	}
+
+	return fs.WalkDir(os.DirFS(src), ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		target := filepath.Join(dst, path)
+
+		if d.IsDir() {
+			if err := os.MkdirAll(target, 0700); err != nil {
+				return fmt.Errorf("failed to create directory %q: %w", target, err)
+			}
+			return nil
+		}
+		return copyFile(ctx, filepath.Join(src, path), target)
+	})
+}
+
+func copyFile(ctx context.Context, src string, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("failed to open source file %q: %w", src, err)
+	}
+	defer in.Close()
+
+	if err := os.MkdirAll(filepath.Dir(dst), 0700); err != nil {
+		return fmt.Errorf("failed to create destination directory: %w", err)
+	}
+
+	out, err := os.Create(dst)
+	if err != nil {
+		return fmt.Errorf("failed to create destination file %q: %w", dst, err)
+	}
+	defer out.Close()
+
+	stop := context.AfterFunc(ctx, func() { _ = in.Close() })
+	defer stop()
+	if _, err := io.Copy(out, in); err != nil {
+		if ctx.Err() != nil {
+			return fmt.Errorf("copying file %q to %q was canceled: %w", src, dst, ctx.Err())
+		}
+		return fmt.Errorf("failed to copy %q to %q: %w", src, dst, err)
+	}
+	return nil
 }

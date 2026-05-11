@@ -22,6 +22,7 @@ type RemoteConn interface {
 	FS
 	RemoteShell // TODO: should be removed after refactoring.
 	Forwarder
+	RemoteTransfer
 }
 
 type FS interface {
@@ -48,6 +49,11 @@ type Cmder interface {
 	Run(ctx context.Context) error
 	Output(ctx context.Context) ([]byte, error)
 	Interactive() (io.WriteCloser, io.Reader, io.Reader, Closer, error)
+}
+
+type RemoteTransfer interface {
+	Push(ctx context.Context, local, remote string) error
+	// Pull(ctx context.Context, src string, dst string) error
 }
 
 // WithCloser is a helper to create an io.ReadCloser from an io.Reader

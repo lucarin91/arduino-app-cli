@@ -314,6 +314,22 @@ func (a *ADBCommand) Interactive() (io.WriteCloser, io.Reader, io.Reader, remote
 	}, nil
 }
 
+func (a *ADBConnection) Push(ctx context.Context, local, remote string) error {
+	if filepath.Base(remote) == filepath.Base(local) {
+		// force overwrite of the folder if the remote that exists.
+		remote = filepath.Dir(remote)
+	}
+	cmd, err := paths.NewProcess(nil, a.adbPath, "-s", a.host, "push", local, remote)
+	if err != nil {
+		return err
+	}
+	stdout, err := cmd.RunAndCaptureCombinedOutput(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to push file from %q to %q: %w: %s", local, remote, err, string(stdout))
+	}
+	return nil
+}
+
 func FindAdbPath() string {
 	var adbPath = "adb"
 

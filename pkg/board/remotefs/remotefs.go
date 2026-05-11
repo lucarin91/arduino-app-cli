@@ -46,28 +46,6 @@ func (a RemoteFS) Open(name string) (fs.File, error) {
 	return &RemoteFile{name: name, base: a.base, conn: a.conn}, nil
 }
 
-type RemoteFSWriter struct {
-	RemoteFS
-}
-
-func (a RemoteFS) ToWriter() RemoteFSWriter {
-	return RemoteFSWriter{
-		RemoteFS: a,
-	}
-}
-
-func (a RemoteFSWriter) MkDirAll(p string) error {
-	return a.conn.MkDirAll(path.Join(a.base, p))
-}
-
-func (a RemoteFSWriter) WriteFile(p string, data io.ReadCloser) error {
-	return a.conn.WriteFile(data, path.Join(a.base, p))
-}
-
-func (a RemoteFSWriter) RmFile(p string) error {
-	return a.conn.Remove(path.Join(a.base, p))
-}
-
 type RemoteFile struct {
 	name string
 	base string

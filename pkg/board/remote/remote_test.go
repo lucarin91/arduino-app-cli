@@ -8,6 +8,8 @@ package remote_test
 import (
 	"fmt"
 	"net"
+	"path"
+	"slices"
 
 	"io"
 	"strings"
@@ -53,58 +55,89 @@ func TestRemoteFS(t *testing.T) {
 	},
 	}
 
+	files := []string{
+		"testdir/testfile.txt",
+		"testdir/testfile with spaces.txt",
+		"testdir with space/testfile.txt",
+		"testdir with space/testfile with spaces.txt",
+	}
+
+	dirs := func() []string {
+		dirs := make([]string, 0, len(files))
+		for _, file := range files {
+			dirs = append(dirs, path.Dir(file))
+		}
+		slices.Sort(dirs)
+		return slices.Compact(dirs)
+	}()
+
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Run("Mkdir", func(t *testing.T) {
-				err := tc.conn.MkDirAll("./testdir")
-				require.NoError(t, err)
-				info, err := tc.conn.Stats("./testdir")
-				require.NoError(t, err)
-				assert.Equal(t, remote.FileInfo{
-					Name:  "testdir",
-					IsDir: true,
-				}, info)
+				for _, dir := range dirs {
+					err := tc.conn.MkDirAll("./" + dir)
+					require.NoError(t, err)
+					info, err := tc.conn.Stats("./" + dir)
+					require.NoError(t, err)
+					assert.Equal(t, remote.FileInfo{
+						Name:  dir,
+						IsDir: true,
+					}, info)
+				}
 			})
 
 			t.Run("WriteFile/ReadFile", func(t *testing.T) {
-				err := tc.conn.WriteFile(strings.NewReader("Hello, World!"), "./testdir/testfile.txt")
-				require.NoError(t, err)
-				info, err := tc.conn.Stats("./testdir/testfile.txt")
-				require.NoError(t, err)
-				assert.Equal(t, remote.FileInfo{
-					Name:  "testfile.txt",
-					IsDir: false,
-				}, info)
+				for _, file := range files {
+					t.Run(file, func(t *testing.T) {
+						err := tc.conn.WriteFile(strings.NewReader("Hello, World!"), "./"+file)
+						require.NoError(t, err)
+						info, err := tc.conn.Stats("./" + file)
+						require.NoError(t, err)
+						assert.Equal(t, remote.FileInfo{
+							Name:  path.Base(file),
+							IsDir: false,
+						}, info)
 
-				r, err := tc.conn.ReadFile("./testdir/testfile.txt")
-				require.NoError(t, err)
-				data, err := io.ReadAll(r)
-				require.NoError(t, err)
-				require.Equal(t, "Hello, World!", string(data))
+						r, err := tc.conn.ReadFile("./" + file)
+						require.NoError(t, err)
+						data, err := io.ReadAll(r)
+						require.NoError(t, err)
+						require.Equal(t, "Hello, World!", string(data))
+					})
+				}
 			})
 
 			t.Run("List", func(t *testing.T) {
-				files, err := tc.conn.List("./")
+				gotFiles, err := tc.conn.List("./")
 				require.NoError(t, err)
-				assert.NotEmpty(t, files)
-				assert.Contains(t, files, remote.FileInfo{Name: "testdir", IsDir: true})
+				for _, dir := range dirs {
+					assert.Contains(t, gotFiles, remote.FileInfo{Name: dir, IsDir: true})
+				}
 
-				files, err = tc.conn.List("./testdir")
-				require.NoError(t, err)
-				assert.Len(t, files, 1)
-				assert.Equal(t, remote.FileInfo{Name: "testfile.txt", IsDir: false}, files[0])
+				for _, dir := range dirs {
+					gotFiles, err = tc.conn.List("./" + dir)
+					require.NoError(t, err)
+					assert.Len(t, gotFiles, 2)
+					for _, gotFile := range gotFiles {
+						assert.Contains(t, files, path.Join(dir, gotFile.Name))
+					}
+				}
 			})
 
 			t.Run("Remove", func(t *testing.T) {
-				err := tc.conn.Remove("./testdir/testfile.txt")
-				require.NoError(t, err)
-				_, err = tc.conn.Stats("./testdir/testfile.txt")
-				assert.Error(t, err)
+				for _, file := range files {
+					err := tc.conn.Remove("./" + file)
+					require.NoError(t, err)
+					_, err = tc.conn.Stats("./" + file)
+					assert.Error(t, err)
+				}
 
-				err = tc.conn.Remove("./testdir")
-				require.NoError(t, err)
-				_, err = tc.conn.Stats("./testdir")
-				assert.Error(t, err)
+				for _, dir := range dirs {
+					err := tc.conn.Remove("./" + dir)
+					require.NoError(t, err)
+					_, err = tc.conn.Stats("./" + dir)
+					assert.Error(t, err)
+				}
 			})
 		})
 	}

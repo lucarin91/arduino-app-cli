@@ -18,6 +18,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 
 	"github.com/arduino/go-paths-helper"
@@ -148,7 +149,7 @@ func (a *ADBConnection) ForwardKillAll(ctx context.Context) error {
 }
 
 func (a *ADBConnection) List(path string) ([]remote.FileInfo, error) {
-	cmd, err := paths.NewProcess(nil, a.adbPath, "-s", a.host, "shell", "ls", "-la", path)
+	cmd, err := paths.NewProcess(nil, a.adbPath, "-s", a.host, "shell", "ls", "-laQ", strconv.Quote(path))
 	if err != nil {
 		return nil, err
 	}
@@ -163,41 +164,11 @@ func (a *ADBConnection) List(path string) ([]remote.FileInfo, error) {
 	}
 	defer func() { _ = cmd.Wait() }()
 
-	r := bufio.NewReader(output)
-	_, err = r.ReadBytes('\n') // Skip the first line
-	if err != nil {
-		return nil, err
-	}
-
-	var files []remote.FileInfo
-	for {
-		line, err := r.ReadBytes('\n')
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return nil, err
-		}
-		line = bytes.TrimSpace(line)
-		if len(line) == 0 {
-			continue
-		}
-		parts := bytes.Split(line, []byte(" "))
-		name := string(parts[len(parts)-1])
-		if name == "." || name == ".." {
-			continue
-		}
-		files = append(files, remote.FileInfo{
-			Name:  name,
-			IsDir: line[0] == 'd',
-		})
-	}
-
-	return files, nil
+	return remote.ParseLsOutput(output)
 }
 
 func (a *ADBConnection) Stats(p string) (remote.FileInfo, error) {
-	cmd, err := paths.NewProcess(nil, a.adbPath, "-s", a.host, "shell", "file", p)
+	cmd, err := paths.NewProcess(nil, a.adbPath, "-s", a.host, "shell", "file", strconv.Quote(p))
 	if err != nil {
 		return remote.FileInfo{}, err
 	}
@@ -237,15 +208,15 @@ func (a *ADBConnection) Stats(p string) (remote.FileInfo, error) {
 }
 
 func (a *ADBConnection) ReadFile(path string) (io.ReadCloser, error) {
-	return adbReadFile(a, path)
+	return adbReadFile(a, strconv.Quote(path))
 }
 
 func (a *ADBConnection) WriteFile(r io.Reader, path string) error {
-	return adbWriteFile(a, r, path)
+	return adbWriteFile(a, r, strconv.Quote(path))
 }
 
 func (a *ADBConnection) MkDirAll(path string) error {
-	cmd, err := paths.NewProcess(nil, a.adbPath, "-s", a.host, "shell", "install", "-o", username, "-g", username, "-m", "755", "-d", path)
+	cmd, err := paths.NewProcess(nil, a.adbPath, "-s", a.host, "shell", "install", "-o", username, "-g", username, "-m", "755", "-d", strconv.Quote(path))
 	if err != nil {
 		return err
 	}
@@ -257,7 +228,7 @@ func (a *ADBConnection) MkDirAll(path string) error {
 }
 
 func (a *ADBConnection) Remove(path string) error {
-	cmd, err := paths.NewProcess(nil, a.adbPath, "-s", a.host, "shell", "rm", "-r", path) // nolint:gosec
+	cmd, err := paths.NewProcess(nil, a.adbPath, "-s", a.host, "shell", "rm", "-r", strconv.Quote(path))
 	if err != nil {
 		return err
 	}

@@ -316,7 +316,7 @@ func (a *ADBCommand) Interactive() (io.WriteCloser, io.Reader, io.Reader, remote
 
 func (a *ADBConnection) Push(ctx context.Context, local, remote string) error {
 	if filepath.Base(remote) == filepath.Base(local) {
-		// force overwrite of the folder if the remote that exists.
+		// force overwrite of the folder if the remote exists.
 		remote = filepath.Dir(remote)
 	}
 	cmd, err := paths.NewProcess(nil, a.adbPath, "-s", a.host, "push", local, remote)

@@ -6,6 +6,7 @@
 package ssh
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"io/fs"
@@ -25,7 +26,7 @@ func NewScpClient(client *ssh.Client) *ScpClient {
 
 const remoteBinary = "scp"
 
-func (c *ScpClient) PushDir(fsys fs.FS, remote string, override bool) error {
+func (c *ScpClient) PushDir(ctx context.Context, fsys fs.FS, remote string, override bool) error {
 	// If override is true, the remote path is treated as a directory where the contents of fsys will be copied.
 	base := filepath.Base(remote)
 	if override {
@@ -54,7 +55,7 @@ func (c *ScpClient) PushDir(fsys fs.FS, remote string, override bool) error {
 	}
 
 	rw := &scpSession{r: r, w: w}
-	if err := pushDir(rw, fsys, base); err != nil {
+	if err := pushDir(ctx, rw, fsys, base); err != nil {
 		return err
 	}
 	_ = rw.Close()
@@ -62,7 +63,7 @@ func (c *ScpClient) PushDir(fsys fs.FS, remote string, override bool) error {
 	return session.Wait()
 }
 
-func (c *ScpClient) PushFile(local, remote string) error {
+func (c *ScpClient) PushFile(ctx context.Context, local, remote string) error {
 	session, err := c.Client.NewSession()
 	if err != nil {
 		return err
@@ -91,7 +92,7 @@ func (c *ScpClient) PushFile(local, remote string) error {
 	defer f.Close()
 
 	rw := &scpSession{r: r, w: w}
-	if err := pushFile(rw, f); err != nil {
+	if err := pushFile(ctx, rw, f); err != nil {
 		return err
 	}
 	_ = rw.Close()
@@ -124,7 +125,7 @@ func (s *scpSession) Close() error {
 	return s.w.Close()
 }
 
-func pushFile(rw io.ReadWriter, f fs.File) error {
+func pushFile(ctx context.Context, rw io.ReadWriteCloser, f fs.File) error {
 	info, err := f.Stat()
 	if err != nil {
 		return err
@@ -136,7 +137,12 @@ func pushFile(rw io.ReadWriter, f fs.File) error {
 		return err
 	}
 
+	stop := context.AfterFunc(ctx, func() { _ = rw.Close() })
+	defer stop()
 	if _, err := io.Copy(rw, f); err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		return err
 	}
 	fmt.Fprint(rw, "\x00")
@@ -144,15 +150,15 @@ func pushFile(rw io.ReadWriter, f fs.File) error {
 	return checkErr(rw)
 }
 
-func pushDir(rw io.ReadWriter, fsys fs.FS, remoteBase string) error {
+func pushDir(ctx context.Context, rw io.ReadWriteCloser, fsys fs.FS, remoteBase string) error {
 	info, err := fs.Stat(fsys, ".")
 	if err != nil {
 		return err
 	}
-	return pusDirRec(rw, fsys, ".", remoteBase, info)
+	return pusDirRec(ctx, rw, fsys, ".", remoteBase, info)
 }
 
-func pusDirRec(rw io.ReadWriter, fsys fs.FS, name, remote string, info os.FileInfo) error {
+func pusDirRec(ctx context.Context, rw io.ReadWriteCloser, fsys fs.FS, name, remote string, info os.FileInfo) error {
 	switch info.Mode().Type() {
 	case fs.ModeDir:
 		fmt.Fprintf(rw, "D%04o 0 %s\n", info.Mode().Perm(), remote)
@@ -170,7 +176,7 @@ func pusDirRec(rw io.ReadWriter, fsys fs.FS, name, remote string, info os.FileIn
 			if err != nil {
 				return err
 			}
-			if err := pusDirRec(rw, fsys, name1, d1.Name(), info1); err != nil {
+			if err := pusDirRec(ctx, rw, fsys, name1, d1.Name(), info1); err != nil {
 				return err
 			}
 		}
@@ -183,7 +189,7 @@ func pusDirRec(rw io.ReadWriter, fsys fs.FS, name, remote string, info os.FileIn
 		if err != nil {
 			return err
 		}
-		if err := pushFile(rw, f); err != nil {
+		if err := pushFile(ctx, rw, f); err != nil {
 			return err
 		}
 	default:

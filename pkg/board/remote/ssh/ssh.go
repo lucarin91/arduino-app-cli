@@ -360,8 +360,8 @@ func (a *SSHConnection) Push(ctx context.Context, local, remote string) error {
 				overwrite = true
 			}
 		}
-		return scpClient.PushDir(os.DirFS(local), remote, overwrite)
+		return scpClient.PushDir(ctx, os.DirFS(local), remote, overwrite)
 	} else {
-		return scpClient.PushFile(local, remote)
+		return scpClient.PushFile(ctx, local, remote)
 	}
 }

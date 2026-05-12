@@ -13,6 +13,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -31,10 +32,13 @@ func BenchmarkRemotePush(b *testing.B) {
 		})
 	})
 
-	b.Run("FSWalk", func(b *testing.B) {
+	b.Run("Base", func(b *testing.B) {
 		runPushBenchmark(b, func(ctx context.Context, conn remote.RemoteConn, src, dst string) error {
 			return fsWalkPush(conn, src, dst)
 		})
+	})
+	b.Run("Legacy", func(b *testing.B) {
+		runPushBenchmark(b, legacyPush)
 	})
 }
 
@@ -206,4 +210,107 @@ func fsWalkPush(rfs remote.FS, src, dst string) error {
 		defer in.Close()
 		return rfs.WriteFile(in, target)
 	})
+}
+
+// legacyPush replicates the old ImportFolderToAppFromPath algorithm:
+//  1. walk src locally and collect dirs/files
+//  2. create all remote dirs concurrently (MkDirAll is recursive/idempotent)
+//  3. upload all files concurrently
+//
+// Kept here only for benchmarking purposes.
+func legacyPush(ctx context.Context, conn remote.RemoteConn, src, dst string) error {
+	const maxConcurrentUploads = 8
+
+	cancelCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	type fileEntry struct {
+		localPath  string
+		remotePath string
+	}
+	var dirs []string
+	var files []fileEntry
+
+	if err := filepath.WalkDir(src, func(currentLocalPath string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		relPath, err := filepath.Rel(src, currentLocalPath)
+		if err != nil {
+			return err
+		}
+		remoteEntryPath := path.Join(dst, relPath)
+		if d.IsDir() {
+			dirs = append(dirs, remoteEntryPath)
+		} else {
+			files = append(files, fileEntry{localPath: currentLocalPath, remotePath: remoteEntryPath})
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	sem := make(chan struct{}, maxConcurrentUploads)
+	var wg sync.WaitGroup
+	var firstErr error
+	var errMu sync.Mutex
+	setErr := func(err error) {
+		errMu.Lock()
+		if firstErr == nil {
+			firstErr = err
+		}
+		errMu.Unlock()
+	}
+
+	// Phase 2: concurrent MkDirAll.
+	for _, d := range dirs {
+		if cancelCtx.Err() != nil {
+			break
+		}
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(d string) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			if err := conn.MkDirAll(d); err != nil {
+				setErr(err)
+			}
+		}(d)
+	}
+	wg.Wait()
+	if firstErr != nil {
+		return firstErr
+	}
+
+	// Phase 3: concurrent WriteFile.
+	for _, fe := range files {
+		if cancelCtx.Err() != nil {
+			break
+		}
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(f fileEntry) {
+			defer wg.Done()
+			defer func() { <-sem }()
+
+			localFile, err := os.Open(f.localPath)
+			if err != nil {
+				setErr(fmt.Errorf("failed to open local file %q: %w", f.localPath, err))
+				return
+			}
+			defer localFile.Close()
+
+			for range 10 {
+				err = conn.WriteFile(localFile, f.remotePath)
+				if err == nil {
+					return
+				}
+			}
+			_ = conn.Remove(f.remotePath)
+			setErr(fmt.Errorf("failed to write remote file %q: %w", f.remotePath, err))
+		}(fe)
+	}
+	wg.Wait()
+
+	return firstErr
 }

@@ -16,11 +16,11 @@ import (
 	"net"
 	"os"
 	"path"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
 
+	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 
 	"github.com/arduino/arduino-app-cli/pkg/board/remote"
@@ -344,24 +344,74 @@ func (c *SSHCommand) Interactive() (io.WriteCloser, io.Reader, io.Reader, remote
 	}, nil
 }
 
-func (a *SSHConnection) Push(ctx context.Context, local, remote string) error {
-	scpClient := NewScpClient(a.client)
+func (a *SSHConnection) Push(ctx context.Context, local, remoteDst string) error {
+	sftpClient, err := sftp.NewClient(a.client)
+	if err != nil {
+		return fmt.Errorf("failed to create sftp client: %w", err)
+	}
+	defer sftpClient.Close()
 
 	info, err := os.Stat(local)
 	if err != nil {
 		return err
 	}
 
-	if info.IsDir() {
-		var overwrite bool
-		if filepath.Base(local) == filepath.Base(remote) {
-			if _, err := a.Stats(remote); err == nil {
-				// force overwrite of the folder if the remote exists.
-				overwrite = true
-			}
+	if !info.IsDir() {
+		f, err := os.Open(local)
+		if err != nil {
+			return err
 		}
-		return scpClient.PushDir(os.DirFS(local), remote, overwrite)
-	} else {
-		return scpClient.PushFile(local, remote)
+		defer f.Close()
+		return pushFileSFTP(sftpClient, f, remoteDst, info.Mode())
 	}
+
+	localFS := os.DirFS(local)
+	return fs.WalkDir(os.DirFS(local), ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		remotePath := path.Join(remoteDst, p)
+		if d.IsDir() {
+			if err := sftpClient.MkdirAll(remotePath); err != nil {
+				return fmt.Errorf("failed to create remote dir %q: %w", remotePath, err)
+			}
+			return nil
+		}
+
+		fi, err := d.Info()
+		if err != nil {
+			return err
+		}
+
+		src, err := localFS.Open(p)
+		if err != nil {
+			return fmt.Errorf("failed to open local file %q: %w", p, err)
+		}
+		defer src.Close()
+
+		return pushFileSFTP(sftpClient, src, remotePath, fi.Mode())
+	})
+}
+
+func pushFileSFTP(client *sftp.Client, src io.Reader, remote string, mode fs.FileMode) error {
+	if err := client.MkdirAll(path.Dir(remote)); err != nil {
+		return fmt.Errorf("failed to create remote dir: %w", err)
+	}
+
+	dst, err := client.Create(remote)
+	if err != nil {
+		return fmt.Errorf("failed to create remote file: %w", err)
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, src); err != nil {
+		return fmt.Errorf("failed to copy file: %w", err)
+	}
+
+	if err := client.Chmod(remote, mode.Perm()); err != nil {
+		return fmt.Errorf("failed to chmod remote file: %w", err)
+	}
+
+	return nil
 }

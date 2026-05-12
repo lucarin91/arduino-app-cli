@@ -60,7 +60,10 @@ func (c *ScpClient) PushDir(ctx context.Context, fsys fs.FS, remote string, over
 	}
 	_ = rw.Close()
 
-	return session.Wait()
+	if err := session.Wait(); err != nil {
+		return fmt.Errorf("scp command failed: %w", err)
+	}
+	return nil
 }
 
 func (c *ScpClient) PushFile(ctx context.Context, local, remote string) error {
@@ -204,8 +207,21 @@ func checkErr(r io.Reader) error {
 	if _, err := io.ReadFull(r, buf); err != nil {
 		return err
 	}
-	if buf[0] != 0 {
-		return fmt.Errorf("received error code: %d", buf[0])
+	if buf[0] == 0 {
+		return nil
 	}
-	return nil
+
+	// On code 1 (warning) or 2 (fatal), the server sends a newline-terminated message.
+	var msg []byte
+	b := make([]byte, 1)
+	for {
+		if _, err := io.ReadFull(r, b); err != nil {
+			break
+		}
+		if b[0] == '\n' {
+			break
+		}
+		msg = append(msg, b[0])
+	}
+	return fmt.Errorf("scp error code %d: %s", buf[0], string(msg))
 }

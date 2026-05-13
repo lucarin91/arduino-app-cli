@@ -161,7 +161,7 @@ func pushDir(ctx context.Context, rw io.ReadWriteCloser, fsys fs.FS, remoteBase 
 	return pusDirRec(ctx, rw, fsys, ".", remoteBase, info)
 }
 
-func pusDirRec(ctx context.Context, rw io.ReadWriteCloser, fsys fs.FS, name, remote string, info os.FileInfo) error {
+func pushDirRec(ctx context.Context, rw io.ReadWriteCloser, fsys fs.FS, name, remote string, info os.FileInfo) error {
 	switch info.Mode().Type() {
 	case fs.ModeDir:
 		fmt.Fprintf(rw, "D%04o 0 %s\n", info.Mode().Perm(), remote)

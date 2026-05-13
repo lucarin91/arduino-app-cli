@@ -53,7 +53,6 @@ type Cmder interface {
 
 type RemoteTransfer interface {
 	Push(ctx context.Context, local, remote string) error
-	// Pull(ctx context.Context, src string, dst string) error
 }
 
 // WithCloser is a helper to create an io.ReadCloser from an io.Reader

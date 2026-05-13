@@ -158,7 +158,7 @@ func pushDir(ctx context.Context, rw io.ReadWriteCloser, fsys fs.FS, remoteBase 
 	if err != nil {
 		return err
 	}
-	return pusDirRec(ctx, rw, fsys, ".", remoteBase, info)
+	return pushDirRec(ctx, rw, fsys, ".", remoteBase, info)
 }
 
 func pushDirRec(ctx context.Context, rw io.ReadWriteCloser, fsys fs.FS, name, remote string, info os.FileInfo) error {
@@ -179,7 +179,7 @@ func pushDirRec(ctx context.Context, rw io.ReadWriteCloser, fsys fs.FS, name, re
 			if err != nil {
 				return err
 			}
-			if err := pusDirRec(ctx, rw, fsys, name1, d1.Name(), info1); err != nil {
+			if err := pushDirRec(ctx, rw, fsys, name1, d1.Name(), info1); err != nil {
 				return err
 			}
 		}

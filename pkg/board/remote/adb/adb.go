@@ -315,10 +315,38 @@ func (a *ADBCommand) Interactive() (io.WriteCloser, io.Reader, io.Reader, remote
 }
 
 func (a *ADBConnection) Push(ctx context.Context, local, remote string) error {
-	if filepath.Base(remote) == filepath.Base(local) {
-		// force overwrite of the folder if the remote exists.
-		remote = filepath.Dir(remote)
+	isDirLocal := func() bool {
+		if info, err := os.Stat(local); err == nil {
+			return info.IsDir()
+		}
+		return false
+	}()
+	isDirRemote := func() bool {
+		if info, err := a.Stats(remote); err == nil {
+			return info.IsDir
+		}
+		return false
+	}()
+
+	fmt.Printf("Pushing %q to %q\n", local, remote)
+	fmt.Printf("local is dir: %v\n", isDirLocal)
+	fmt.Printf("remote is dir: %v\n", isDirRemote)
+	fmt.Printf("local base: %q\n", path.Base(local))
+	fmt.Printf("remote base: %q\n", path.Base(remote))
+
+	// Force overwrite of the folder if the remote exists.
+	if isDirRemote {
+		if !isDirLocal {
+			return fmt.Errorf("cannot push file %q to directory %q", local, remote)
+		}
+		if err := a.Remove(remote); err != nil {
+			return fmt.Errorf("failed to remove existing remote directory %q: %w", remote, err)
+		}
+		// remote = path.Dir(remote)
+		fmt.Printf("Remote %q is a directory, pushing to %q instead\n", remote, remote)
 	}
+
+	fmt.Printf("Pushing %q to %q\n", local, remote)
 	cmd, err := paths.NewProcess(nil, a.adbPath, "-s", a.host, "push", local, remote)
 	if err != nil {
 		return err

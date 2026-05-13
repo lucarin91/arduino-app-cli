@@ -6,6 +6,7 @@
 package remote_test
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net"
@@ -434,6 +435,229 @@ func TestRemoteTransfer(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, nestedContent, string(data))
 			})
+		})
+	}
+}
+
+// TestRemoteTransferPushCases checks the Push() src/dst matrix on every
+// RemoteConn implementation.
+func TestRemoteTransferPushCases(t *testing.T) {
+	name, adbPort, sshPort := testtools.StartAdbDContainer(t)
+	t.Cleanup(func() { testtools.StopAdbDContainer(t, name) })
+
+	type kind int
+	const (
+		none kind = iota
+		file
+		dir
+	)
+
+	cases := []struct {
+		name      string
+		srcKind   kind // file or dir
+		srcName   string
+		dstName   string
+		dstExists kind // none | file | dir (pre-created on remote)
+		wantErr   bool
+		wantKind  kind // expected kind at dst after Push (when !wantErr)
+	}{
+		{
+			name:      "file.txt -> [file.txt]",
+			srcKind:   file,
+			srcName:   "file.txt",
+			dstName:   "file.txt",
+			dstExists: none,
+			wantErr:   false,
+			wantKind:  file,
+		},
+		{
+			name:      "file.txt -> file.txt",
+			srcKind:   file,
+			srcName:   "file.txt",
+			dstName:   "file.txt",
+			dstExists: file,
+			wantErr:   false,
+			wantKind:  file,
+		},
+		{
+			name:      "dir -> [dir]",
+			srcKind:   dir,
+			srcName:   "dir",
+			dstName:   "dir",
+			dstExists: none,
+			wantErr:   false,
+			wantKind:  dir,
+		},
+		{
+			name:      "dir -> dir",
+			srcKind:   dir,
+			srcName:   "dir",
+			dstName:   "dir",
+			dstExists: dir,
+			wantErr:   false,
+			wantKind:  dir,
+		},
+		{
+			name:      "file.txt -> dir",
+			srcKind:   file,
+			srcName:   "file.txt",
+			dstName:   "dir",
+			dstExists: dir,
+			wantErr:   true,
+			wantKind:  none,
+		},
+		{
+			name:      "dir -> file.txt",
+			srcKind:   dir,
+			srcName:   "dir",
+			dstName:   "file.txt",
+			dstExists: file,
+			wantErr:   true,
+			wantKind:  none,
+		},
+		{
+			name:      "file1.txt -> [file2.txt]",
+			srcKind:   file,
+			srcName:   "file1.txt",
+			dstName:   "file2.txt",
+			dstExists: none,
+			wantErr:   false,
+			wantKind:  file,
+		},
+		{
+			name:      "file1.txt -> file2.txt",
+			srcKind:   file,
+			srcName:   "file1.txt",
+			dstName:   "file2.txt",
+			dstExists: file,
+			wantErr:   false,
+			wantKind:  file,
+		},
+		{
+			name:      "dir1 -> [dir2]",
+			srcKind:   dir,
+			srcName:   "dir1",
+			dstName:   "dir2",
+			dstExists: none,
+			wantErr:   false,
+			wantKind:  dir,
+		},
+		{
+			name:      "dir1 -> dir2",
+			srcKind:   dir,
+			srcName:   "dir1",
+			dstName:   "dir2",
+			dstExists: dir,
+			wantErr:   false,
+			wantKind:  dir,
+		},
+	}
+
+	impls := []struct {
+		name     string
+		conn     remote.RemoteConn
+		basePath string
+	}{{
+		"adb",
+		func() remote.RemoteConn {
+			conn, err := adb.FromHost("localhost:"+adbPort, "")
+			require.NoError(t, err)
+			return conn
+		}(),
+		"/home/arduino",
+	}, {
+		"ssh",
+		func() remote.RemoteConn {
+			conn, err := ssh.FromHost("arduino", "arduino", "127.0.0.1:"+sshPort)
+			require.NoError(t, err)
+			return conn
+		}(),
+		"./",
+	}, {
+		"local",
+		func() remote.RemoteConn {
+			return &local.LocalConnection{}
+		}(),
+		"./",
+	}}
+
+	n := 0
+	for _, impl := range impls {
+		t.Run(impl.name, func(t *testing.T) {
+			for _, tc := range cases {
+				t.Run(tc.name, func(t *testing.T) {
+					n++
+					remoteDir := path.Join(impl.basePath, fmt.Sprintf("./testroot_%d", n))
+					require.NoError(t, impl.conn.MkDirAll(remoteDir))
+					t.Cleanup(func() { _ = impl.conn.Remove(remoteDir) })
+
+					makeLocalFile := func(t *testing.T, name, content string) string {
+						t.Helper()
+						p := filepath.Join(t.TempDir(), name)
+						require.NoError(t, os.WriteFile(p, []byte(content), 0600))
+						return p
+					}
+
+					makeLocalDir := func(t *testing.T, name, aContent string) string {
+						t.Helper()
+						root := filepath.Join(t.TempDir(), name)
+						require.NoError(t, os.MkdirAll(root, 0755))
+						require.NoError(t, os.WriteFile(filepath.Join(root, "a.txt"), []byte(aContent), 0600))
+						return root
+					}
+
+					// Build local source.
+					var src string
+					switch tc.srcKind {
+					case file:
+						src = makeLocalFile(t, tc.srcName, "hello")
+					case dir:
+						src = makeLocalDir(t, tc.srcName, "hello")
+					}
+
+					// Pre-create destination if required.
+					dst := path.Join(remoteDir, tc.dstName)
+					switch tc.dstExists {
+					case file:
+						require.NoError(t, impl.conn.WriteFile(strings.NewReader("old"), dst))
+					case dir:
+						require.NoError(t, impl.conn.MkDirAll(dst))
+						require.NoError(t, impl.conn.WriteFile(bytes.NewBuffer([]byte("old")), filepath.Join(dst, "a.txt")))
+					}
+
+					// Perform the push operation.
+					err := impl.conn.Push(t.Context(), src, dst)
+					if tc.wantErr {
+						require.Error(t, err)
+						return
+					}
+					require.NoError(t, err)
+
+					info, err := impl.conn.Stats(dst)
+					require.NoError(t, err)
+					assert.Equal(t, tc.wantKind == dir, info.IsDir)
+					assert.Equal(t, tc.dstName, info.Name)
+
+					readRemoteFile := func(t *testing.T, conn remote.RemoteConn, p string) string {
+						r, err := conn.ReadFile(p)
+						require.NoError(t, err)
+						defer r.Close()
+						data, err := io.ReadAll(r)
+						require.NoError(t, err)
+						return string(data)
+					}
+
+					if tc.wantKind == file {
+						assert.Equal(t, "hello", readRemoteFile(t, impl.conn, dst))
+					}
+					if tc.wantKind == dir {
+						assert.Equal(t,
+							"hello",
+							readRemoteFile(t, impl.conn, path.Join(dst, "/a.txt")),
+						)
+					}
+				})
+			}
 		})
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 
 	"golang.org/x/crypto/ssh"
@@ -26,12 +27,8 @@ func NewScpClient(client *ssh.Client) *ScpClient {
 
 const remoteBinary = "scp"
 
-func (c *ScpClient) PushDir(ctx context.Context, fsys fs.FS, remote string, override bool) error {
-	// If override is true, the remote path is treated as a directory where the contents of fsys will be copied.
-	base := filepath.Base(remote)
-	if override {
-		remote = filepath.Dir(remote)
-	}
+func (c *ScpClient) PushDir(ctx context.Context, fsys fs.FS, remote string) error {
+	base := path.Base(remote)
 
 	session, err := c.Client.NewSession()
 	if err != nil {

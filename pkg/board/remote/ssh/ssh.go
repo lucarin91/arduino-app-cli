@@ -370,6 +370,6 @@ func (a *SSHConnection) Push(ctx context.Context, local, remote string) error {
 				return fmt.Errorf("failed to remove existing remote directory %q: %w", remote, err)
 			}
 		}
-		return scpClient.PushDir(ctx, os.DirFS(local), remote, isDirRemote)
+		return scpClient.PushDir(ctx, os.DirFS(local), remote)
 	}
 }

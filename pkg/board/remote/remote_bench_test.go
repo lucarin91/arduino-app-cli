@@ -233,11 +233,11 @@ func BenchmarkRemoteWalk(b *testing.B) {
 			}
 
 			b.Run("Flat", func(b *testing.B) {
-				_, files, dirs := seedRemoteTree(b, conn, path.Join(remoteBase, "flat"), 1, 100)
+				files, dirs := seedRemoteTree(b, conn, path.Join(remoteBase, "flat"), 1, 100)
 				run(b, "flat", files, dirs)
 			})
 			b.Run("Deep", func(b *testing.B) {
-				_, files, dirs := seedRemoteTree(b, conn, path.Join(remoteBase, "deep"), 5, 2)
+				files, dirs := seedRemoteTree(b, conn, path.Join(remoteBase, "deep"), 5, 2)
 				run(b, "deep", files, dirs)
 			})
 		})
@@ -248,7 +248,7 @@ func BenchmarkRemoteWalk(b *testing.B) {
 // and branching factor. At every level it creates `branch` subdirectories and
 // `branch` files. Returns the root, total number of files and total number of
 // directories (including the root).
-func seedRemoteTree(tb testing.TB, conn remote.RemoteConn, root string, depth, branch int) (string, int, int) {
+func seedRemoteTree(tb testing.TB, conn remote.RemoteConn, root string, depth, branch int) (int, int) {
 	tb.Helper()
 	require.NoError(tb, conn.MkDirAll(root))
 
@@ -273,5 +273,5 @@ func seedRemoteTree(tb testing.TB, conn remote.RemoteConn, root string, depth, b
 		}
 	}
 	build(root, depth-1)
-	return root, totalFiles, totalDirs
+	return totalFiles, totalDirs
 }

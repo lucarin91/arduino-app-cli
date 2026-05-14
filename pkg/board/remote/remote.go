@@ -52,6 +52,11 @@ type Cmder interface {
 }
 
 type RemoteTransfer interface {
+	// Push copies a file or directory from the local path to the remote path.
+	// The remote path should always specify the final destination path, and not
+	// the parent directory, even if it exist.
+	// The remote path could instead be different from the local path, and that will
+	// rename while copying.
 	Push(ctx context.Context, local, remote string) error
 }
 

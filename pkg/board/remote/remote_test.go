@@ -439,9 +439,7 @@ func TestRemoteTransfer(t *testing.T) {
 	}
 }
 
-// TestRemoteTransferPushCases checks the Push() src/dst matrix on every
-// RemoteConn implementation.
-func TestRemoteTransferPushCases(t *testing.T) {
+func TestRemoteTransferBehavioralCheck(t *testing.T) {
 	name, adbPort, sshPort := testtools.StartAdbDContainer(t)
 	t.Cleanup(func() { testtools.StopAdbDContainer(t, name) })
 

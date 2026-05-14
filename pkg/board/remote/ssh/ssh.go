@@ -344,8 +344,6 @@ func (c *SSHCommand) Interactive() (io.WriteCloser, io.Reader, io.Reader, remote
 }
 
 func (a *SSHConnection) Push(ctx context.Context, local, remote string) error {
-	scpClient := NewScpClient(a.client)
-
 	isDirLocal := func() bool {
 		if info, err := os.Stat(local); err == nil {
 			return info.IsDir()
@@ -359,19 +357,19 @@ func (a *SSHConnection) Push(ctx context.Context, local, remote string) error {
 		return false
 	}()
 
-	switch {
-	case !isDirLocal && isDirRemote:
-		return fmt.Errorf("cannot push file %q to directory %q", local, remote)
+	scpClient := NewScpClient(a.client)
 
-	case isDirLocal && !isDirRemote:
-		return scpClient.PushDir(ctx, os.DirFS(local), remote, false)
-
-	case isDirLocal && isDirRemote:
-		if err := a.Remove(remote); err != nil {
-			return fmt.Errorf("failed to remove existing remote directory %q: %w", remote, err)
+	if !isDirLocal {
+		if isDirRemote {
+			return fmt.Errorf("cannot push file %q to directory %q", local, remote)
 		}
-		return scpClient.PushDir(ctx, os.DirFS(local), remote, true)
-	default: // !isDirLocal && !isDirRemote
 		return scpClient.PushFile(ctx, local, remote)
+	} else {
+		if isDirRemote {
+			if err := a.Remove(remote); err != nil {
+				return fmt.Errorf("failed to remove existing remote directory %q: %w", remote, err)
+			}
+		}
+		return scpClient.PushDir(ctx, os.DirFS(local), remote, isDirRemote)
 	}
 }

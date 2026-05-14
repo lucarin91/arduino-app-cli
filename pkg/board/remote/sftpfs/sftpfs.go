@@ -78,6 +78,7 @@ func (s *SftpFS) Close() error {
 // onErr drops the cached client if the connection was lost.
 func (s *SftpFS) onErr(err error) {
 	if errors.Is(err, sftp.ErrSSHFxConnectionLost) {
+		// FIXME: this could causes multiple concurrent calls to repetelly drop the client.
 		_ = s.Close()
 	}
 }

@@ -337,10 +337,8 @@ func (a *ADBConnection) Push(ctx context.Context, local, remote string) error {
 	if isDirLocal() {
 		// force directory override by adding a dot at the end of the local path.
 		local = addDotLocal(local)
-	} else {
-		if isDirRemote() {
-			return fmt.Errorf("cannot push file %q to directory %q", local, remote)
-		}
+	} else if isDirRemote() {
+		return fmt.Errorf("cannot push file %q to directory %q", local, remote)
 	}
 
 	cmd, err := paths.NewProcess(nil, a.adbPath, "-s", a.host, "push", local, remote)

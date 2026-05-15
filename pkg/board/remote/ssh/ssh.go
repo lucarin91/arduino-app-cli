@@ -365,11 +365,11 @@ func (a *SSHConnection) Push(ctx context.Context, local, remote string) error {
 		}
 		return scpClient.PushFile(ctx, local, remote)
 	} else {
+		name := path.Base(remote)
 		if isDirRemote {
-			if err := a.Remove(remote); err != nil {
-				return fmt.Errorf("failed to remove existing remote directory %q: %w", remote, err)
-			}
+			// force folder override by pushing into parent folder.
+			remote = path.Dir(remote)
 		}
-		return scpClient.PushDir(ctx, os.DirFS(local), remote)
+		return scpClient.PushDir(ctx, os.DirFS(local), name, remote)
 	}
 }

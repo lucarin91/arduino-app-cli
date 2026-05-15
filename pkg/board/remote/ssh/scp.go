@@ -11,7 +11,6 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"path"
 	"path/filepath"
 
 	"golang.org/x/crypto/ssh"
@@ -27,9 +26,7 @@ func NewScpClient(client *ssh.Client) *ScpClient {
 
 const remoteBinary = "scp"
 
-func (c *ScpClient) PushDir(ctx context.Context, fsys fs.FS, remote string) error {
-	base := path.Base(remote)
-
+func (c *ScpClient) PushDir(ctx context.Context, fsys fs.FS, name, remote string) error {
 	session, err := c.Client.NewSession()
 	if err != nil {
 		return err
@@ -52,7 +49,7 @@ func (c *ScpClient) PushDir(ctx context.Context, fsys fs.FS, remote string) erro
 	}
 
 	rw := &scpSession{r: r, w: w}
-	if err := pushDir(ctx, rw, fsys, base); err != nil {
+	if err := pushDir(ctx, rw, fsys, name); err != nil {
 		return err
 	}
 	_ = rw.Close()

@@ -320,21 +320,26 @@ func (a *ADBConnection) Push(ctx context.Context, local, remote string) error {
 			return info.IsDir()
 		}
 		return false
-	}()
+	}
 	isDirRemote := func() bool {
 		if info, err := a.Stats(remote); err == nil {
 			return info.IsDir
 		}
 		return false
-	}()
-
-	// Force overwrite of the folder if the remote exists.
-	if isDirRemote {
-		if !isDirLocal {
-			return fmt.Errorf("cannot push file %q to directory %q", local, remote)
+	}
+	addDotLocal := func(p string) string {
+		if p[len(p)-1] == filepath.Separator {
+			return p + "."
 		}
-		if err := a.Remove(remote); err != nil {
-			return fmt.Errorf("failed to remove existing remote directory %q: %w", remote, err)
+		return p + string(filepath.Separator) + "."
+	}
+
+	if isDirLocal() {
+		// force directory override by adding a dot at the end of the local path.
+		local = addDotLocal(local)
+	} else {
+		if isDirRemote() {
+			return fmt.Errorf("cannot push file %q to directory %q", local, remote)
 		}
 	}
 

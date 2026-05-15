@@ -621,6 +621,7 @@ func TestRemoteTransferBehavioralCheck(t *testing.T) {
 					case dir:
 						require.NoError(t, impl.conn.MkDirAll(dst))
 						require.NoError(t, impl.conn.WriteFile(bytes.NewBuffer([]byte("old")), filepath.Join(dst, "a.txt")))
+						require.NoError(t, impl.conn.WriteFile(bytes.NewBuffer([]byte("old")), filepath.Join(dst, "old.txt")))
 					}
 
 					// Perform the push operation.
@@ -653,6 +654,13 @@ func TestRemoteTransferBehavioralCheck(t *testing.T) {
 							"hello",
 							readRemoteFile(t, impl.conn, path.Join(dst, "/a.txt")),
 						)
+						if tc.dstExists == dir {
+							assert.Equal(t,
+								"old",
+								readRemoteFile(t, impl.conn, path.Join(dst, "/old.txt")),
+								"existing files in destination dir should be preserved",
+							)
+						}
 					}
 				})
 			}

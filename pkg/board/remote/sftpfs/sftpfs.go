@@ -70,6 +70,7 @@ func (s *SftpFS) Close() error {
 }
 
 func (s *SftpFS) closeLocked() error {
+	fmt.Printf("DEBUG: SftpFS close client\n")
 	var err error
 	if c := s.client.Load(); c != nil {
 		err = errors.Join(err, c.Close())
@@ -95,6 +96,7 @@ func (s *SftpFS) onErr(err error) {
 }
 
 func (s *SftpFS) List(path string) ([]remote.FileInfo, error) {
+	fmt.Printf("DEBUG: SftpFS list %q\n", path)
 	c, err := s.get()
 	if err != nil {
 		return nil, err

@@ -196,6 +196,7 @@ func FromFQBN(ctx context.Context, fqbns []string) ([]Board, error) {
 				if name, err := GetCustomName(ctx, conn); err == nil {
 					customName = name
 				}
+				conn.Close()
 			} else {
 				slog.Warn("failed to get custom name", "serial", serial, "error", err)
 			}

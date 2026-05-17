@@ -43,11 +43,16 @@ func (s *SftpFS) get() (*sftp.Client, error) {
 	if c := s.client.Load(); c != nil {
 		return c, nil
 	}
+	fmt.Printf("DEBUG: SftpFS crete client\n")
 	s.initMu.Lock()
 	defer s.initMu.Unlock()
 	if c := s.client.Load(); c != nil {
 		return c, nil
 	}
+	return s.genLocked()
+}
+
+func (s *SftpFS) genLocked() (*sftp.Client, error) {
 	c, extra, err := s.dial()
 	if err != nil {
 		return nil, err
@@ -61,6 +66,10 @@ func (s *SftpFS) get() (*sftp.Client, error) {
 func (s *SftpFS) Close() error {
 	s.initMu.Lock()
 	defer s.initMu.Unlock()
+	return s.closeLocked()
+}
+
+func (s *SftpFS) closeLocked() error {
 	var err error
 	if c := s.client.Load(); c != nil {
 		err = errors.Join(err, c.Close())
@@ -77,9 +86,11 @@ func (s *SftpFS) Close() error {
 
 // onErr drops the cached client if the connection was lost.
 func (s *SftpFS) onErr(err error) {
+	fmt.Printf("DEBUG: SftpFS error: %v\n", err)
 	if errors.Is(err, sftp.ErrSSHFxConnectionLost) {
-		// FIXME: this could causes multiple concurrent calls to repetelly drop the client.
-		_ = s.Close()
+		if old := s.client.Swap(nil); old != nil {
+			_ = s.Close()
+		}
 	}
 }
 
@@ -117,6 +128,7 @@ func (s *SftpFS) Stats(p string) (remote.FileInfo, error) {
 }
 
 func (s *SftpFS) ReadFile(path string) (io.ReadCloser, error) {
+	fmt.Printf("DEBUG: SftpFS read file %q\n", path)
 	c, err := s.get()
 	if err != nil {
 		return nil, err

@@ -314,6 +314,44 @@ func (a *ADBCommand) Interactive() (io.WriteCloser, io.Reader, io.Reader, remote
 	}, nil
 }
 
+func (a *ADBConnection) Push(ctx context.Context, local, remote string) error {
+	isDirLocal := func() bool {
+		if info, err := os.Stat(local); err == nil {
+			return info.IsDir()
+		}
+		return false
+	}
+	isDirRemote := func() bool {
+		if info, err := a.Stats(remote); err == nil {
+			return info.IsDir
+		}
+		return false
+	}
+	addDotLocal := func(p string) string {
+		if p[len(p)-1] == filepath.Separator {
+			return p + "."
+		}
+		return p + string(filepath.Separator) + "."
+	}
+
+	if isDirLocal() {
+		// force directory override by adding a dot at the end of the local path.
+		local = addDotLocal(local)
+	} else if isDirRemote() {
+		return fmt.Errorf("cannot push file %q to directory %q", local, remote)
+	}
+
+	cmd, err := paths.NewProcess(nil, a.adbPath, "-s", a.host, "push", local, remote)
+	if err != nil {
+		return err
+	}
+	stdout, err := cmd.RunAndCaptureCombinedOutput(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to push file from %q to %q: %w: %s", local, remote, err, string(stdout))
+	}
+	return nil
+}
+
 func FindAdbPath() string {
 	var adbPath = "adb"
 

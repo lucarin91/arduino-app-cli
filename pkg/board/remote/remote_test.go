@@ -448,6 +448,7 @@ func TestRemoteTransferBehavioralCheck(t *testing.T) {
 		none kind = iota
 		file
 		dir
+		emptyDir
 	)
 
 	cases := []struct {
@@ -487,6 +488,15 @@ func TestRemoteTransferBehavioralCheck(t *testing.T) {
 			wantKind:  dir,
 		},
 		{
+			name:      "emptydir -> [emptydir]",
+			srcKind:   emptyDir,
+			srcName:   "dir",
+			dstName:   "dir",
+			dstExists: none,
+			wantErr:   false,
+			wantKind:  emptyDir,
+		},
+		{
 			name:      "dir -> dir",
 			srcKind:   dir,
 			srcName:   "dir",
@@ -494,6 +504,15 @@ func TestRemoteTransferBehavioralCheck(t *testing.T) {
 			dstExists: dir,
 			wantErr:   false,
 			wantKind:  dir,
+		},
+		{
+			name:      "emptydir -> emptydir",
+			srcKind:   emptyDir,
+			srcName:   "dir",
+			dstName:   "dir",
+			dstExists: emptyDir,
+			wantErr:   false,
+			wantKind:  emptyDir,
 		},
 		{
 			name:      "file.txt -> dir",
@@ -541,6 +560,15 @@ func TestRemoteTransferBehavioralCheck(t *testing.T) {
 			wantKind:  dir,
 		},
 		{
+			name:      "emotydir1 -> [emptydie2]",
+			srcKind:   emptyDir,
+			srcName:   "dir1",
+			dstName:   "dir2",
+			dstExists: none,
+			wantErr:   false,
+			wantKind:  emptyDir,
+		},
+		{
 			name:      "dir1 -> dir2",
 			srcKind:   dir,
 			srcName:   "dir1",
@@ -548,6 +576,15 @@ func TestRemoteTransferBehavioralCheck(t *testing.T) {
 			dstExists: dir,
 			wantErr:   false,
 			wantKind:  dir,
+		},
+		{
+			name:      "emptydir1 -> emptydir2",
+			srcKind:   emptyDir,
+			srcName:   "dir1",
+			dstName:   "dir2",
+			dstExists: emptyDir,
+			wantErr:   false,
+			wantKind:  emptyDir,
 		},
 	}
 
@@ -589,28 +626,16 @@ func TestRemoteTransferBehavioralCheck(t *testing.T) {
 					require.NoError(t, impl.conn.MkDirAll(remoteDir))
 					t.Cleanup(func() { _ = impl.conn.Remove(remoteDir) })
 
-					makeLocalFile := func(t *testing.T, name, content string) string {
-						t.Helper()
-						p := filepath.Join(t.TempDir(), name)
-						require.NoError(t, os.WriteFile(p, []byte(content), 0600))
-						return p
-					}
-
-					makeLocalDir := func(t *testing.T, name, aContent string) string {
-						t.Helper()
-						root := filepath.Join(t.TempDir(), name)
-						require.NoError(t, os.MkdirAll(root, 0755))
-						require.NoError(t, os.WriteFile(filepath.Join(root, "a.txt"), []byte(aContent), 0600))
-						return root
-					}
-
 					// Build local source.
-					var src string
+					src := filepath.Join(t.TempDir(), name)
 					switch tc.srcKind {
 					case file:
-						src = makeLocalFile(t, tc.srcName, "hello")
+						require.NoError(t, os.WriteFile(src, []byte("hello"), 0600))
 					case dir:
-						src = makeLocalDir(t, tc.srcName, "hello")
+						require.NoError(t, os.MkdirAll(src, 0755))
+						require.NoError(t, os.WriteFile(filepath.Join(src, "a.txt"), []byte("hello"), 0600))
+					case emptyDir:
+						require.NoError(t, os.MkdirAll(src, 0755))
 					}
 
 					// Pre-create destination if required.
@@ -622,6 +647,8 @@ func TestRemoteTransferBehavioralCheck(t *testing.T) {
 						require.NoError(t, impl.conn.MkDirAll(dst))
 						require.NoError(t, impl.conn.WriteFile(bytes.NewBuffer([]byte("old")), filepath.Join(dst, "a.txt")))
 						require.NoError(t, impl.conn.WriteFile(bytes.NewBuffer([]byte("old")), filepath.Join(dst, "old.txt")))
+					case emptyDir:
+						require.NoError(t, impl.conn.MkDirAll(dst))
 					}
 
 					// Perform the push operation.
@@ -634,7 +661,6 @@ func TestRemoteTransferBehavioralCheck(t *testing.T) {
 
 					info, err := impl.conn.Stats(dst)
 					require.NoError(t, err)
-					assert.Equal(t, tc.wantKind == dir, info.IsDir)
 					assert.Equal(t, tc.dstName, info.Name)
 
 					readRemoteFile := func(t *testing.T, conn remote.RemoteConn, p string) string {
@@ -646,10 +672,11 @@ func TestRemoteTransferBehavioralCheck(t *testing.T) {
 						return string(data)
 					}
 
-					if tc.wantKind == file {
+					switch tc.wantKind {
+					case file:
 						assert.Equal(t, "hello", readRemoteFile(t, impl.conn, dst))
-					}
-					if tc.wantKind == dir {
+					case dir:
+						assert.True(t, info.IsDir)
 						assert.Equal(t,
 							"hello",
 							readRemoteFile(t, impl.conn, path.Join(dst, "/a.txt")),
@@ -661,6 +688,8 @@ func TestRemoteTransferBehavioralCheck(t *testing.T) {
 								"existing files in destination dir should be preserved",
 							)
 						}
+					case emptyDir:
+						assert.True(t, info.IsDir)
 					}
 				})
 			}

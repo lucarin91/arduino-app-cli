@@ -335,6 +335,10 @@ func (a *ADBConnection) Push(ctx context.Context, local, remote string) error {
 	}
 
 	if isDirLocal() {
+		// ensure the remote directory exists before pushing, otherwise empty directory push will not work.
+		if err := a.MkDirAll(remote); err != nil {
+			return fmt.Errorf("failed to create remote directory %q: %w", remote, err)
+		}
 		// force directory override by adding a dot at the end of the local path.
 		local = addDotLocal(local)
 	} else if isDirRemote() {

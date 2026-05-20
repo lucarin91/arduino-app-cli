@@ -560,7 +560,7 @@ func TestRemoteTransferBehavioralCheck(t *testing.T) {
 			wantKind:  dir,
 		},
 		{
-			name:      "emotydir1 -> [emptydie2]",
+			name:      "emptydir1 -> [emptydir2]",
 			srcKind:   emptyDir,
 			srcName:   "dir1",
 			dstName:   "dir2",

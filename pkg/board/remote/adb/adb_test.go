@@ -6,6 +6,7 @@
 package adb
 
 import (
+	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -14,6 +15,10 @@ import (
 )
 
 func TestFindAdbPath(t *testing.T) {
+	if os.Getenv("CI") != "" {
+		t.Skip("Skipping test which requires adb to be installed in CI environment")
+	}
+
 	got := FindAdbPath()
 	if runtime.GOOS == "windows" {
 		assert.True(t, filepath.Base(got) == "adb.exe")

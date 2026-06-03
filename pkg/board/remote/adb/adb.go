@@ -14,13 +14,15 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
-	"os/user"
 	"path"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 
+	"github.com/arduino/arduino-cli/commands"
+	rpc "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/commands/v1"
 	"github.com/arduino/go-paths-helper"
 
 	"github.com/arduino/arduino-app-cli/pkg/board/remote"
@@ -363,42 +365,38 @@ func (a *ADBConnection) Push(ctx context.Context, local, remote string) error {
 	return nil
 }
 
-func FindAdbPath() string {
-	var adbPath = "adb"
+var FindAdbPath = sync.OnceValue(func() string {
+	getAdbFromCli := func() (string, error) {
+		// Attempt to find the adb path in the Arduino15 directory
+		srv := commands.NewArduinoCoreServer()
+		conf, err := srv.ConfigurationGet(context.Background(), &rpc.ConfigurationGetRequest{})
+		if err != nil {
+			return "", err
+		}
+		dataDir := conf.GetConfiguration().GetDirectories().GetData()
+		if dataDir == "" {
+			return "", fmt.Errorf("data directory is not set in arduino-cli configuration")
+		}
 
-	// Attempt to find the adb path in the Arduino15 directory
-	const arduino15adbPath = "packages/arduino/tools/adb/32.0.0/adb"
-	var path string
-	switch runtime.GOOS {
-	case "darwin":
-		user, err := user.Current()
-		if err != nil {
-			slog.Warn("Unable to get current user", "error", err)
-			break
+		adbGlob := "packages/arduino/tools/adb/*/adb"
+		if runtime.GOOS == "windows" {
+			adbGlob += ".exe"
 		}
-		path = filepath.Join(user.HomeDir, "/Library/Arduino15/", arduino15adbPath)
-	case "linux":
-		user, err := user.Current()
+		matches, err := filepath.Glob(filepath.Join(dataDir, adbGlob))
 		if err != nil {
-			slog.Warn("Unable to get current user", "error", err)
-			break
+			return "", fmt.Errorf("failed to search for adb in Arduino15 directory: %w", err)
 		}
-		path = filepath.Join(user.HomeDir, ".arduino15/", arduino15adbPath)
-	case "windows":
-		user, err := user.Current()
-		if err != nil {
-			slog.Warn("Unable to get current user", "error", err)
-			break
+		if len(matches) == 0 {
+			return "", fmt.Errorf("adb not found in Arduino15 directory")
 		}
-		path = filepath.Join(user.HomeDir, "AppData/Local/Arduino15/", arduino15adbPath)
-		path += ".exe"
-	}
-	s, err := os.Stat(path)
-	if err == nil && !s.IsDir() {
-		adbPath = path
+		return matches[len(matches)-1], nil
 	}
 
-	slog.Debug("get adb path", "path", adbPath)
-
-	return adbPath
-}
+	if path, err := getAdbFromCli(); err != nil {
+		slog.Warn("Unable to find adb path from arduino-cli configuration", "error", err)
+		return "adb"
+	} else {
+		slog.Debug("get adb path", "path", path)
+		return path
+	}
+})

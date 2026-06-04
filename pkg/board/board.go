@@ -190,14 +190,21 @@ func FromFQBN(ctx context.Context, fqbns []string) ([]Board, error) {
 		switch port.GetPort().GetProtocol() {
 		case SerialProtocol:
 			serial := strings.ToLower(port.GetPort().GetHardwareId()) // in windows this is uppercase.
-			// TODO: we should store the board custom name in the product id so we can get it from the discovery service.
+
 			var customName string
-			if conn, err := adb.FromSerial(serial, ""); err == nil {
-				if name, err := GetCustomName(ctx, conn); err == nil {
-					customName = name
+			if sn, ok := port.GetPort().GetProperties()["product"]; ok {
+				if _, last, ok := strings.Cut(sn, "-"); ok {
+					customName = strings.TrimSpace(last)
 				}
 			} else {
-				slog.Warn("failed to get custom name", "serial", serial, "error", err)
+				// fallback to get custom name from the board if product property is not available.
+				if conn, err := adb.FromSerial(serial, ""); err == nil {
+					if name, err := GetCustomName(ctx, conn); err == nil {
+						customName = name
+					}
+				} else {
+					slog.Warn("failed to get custom name", "serial", serial, "error", err)
+				}
 			}
 
 			boards = append(boards, Board{

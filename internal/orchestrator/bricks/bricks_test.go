@@ -973,7 +973,7 @@ func TestAppBrickInstancesList(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := svc.AppBrickInstancesList(tt.app)
+			result, err := svc.AppBrickInstancesList(tt.app, platform.Platform{})
 
 			if tt.expectedError != "" {
 				require.Error(t, err)
@@ -1083,4 +1083,85 @@ func TestLocalBrickRename(t *testing.T) {
 		require.Contains(t, string(appYamlRaw), "nested-renamed-brick")
 		require.NotContains(t, string(appYamlRaw), "nested-local-brick")
 	})
+}
+
+func TestBricksModelsByBoard(t *testing.T) {
+	tests := []struct {
+		name              string
+		boardName         string
+		brick             bricksindex.Brick
+		expectedModelName string
+	}{
+		{
+			name:      "Brick with two default models",
+			boardName: "ventunoq",
+			brick: bricksindex.Brick{
+				ModelName: "defaultModelName",
+				ModelByBoard: []bricksindex.ModelsBoard{
+					{
+						Board:     "unoq",
+						ModelName: "unoq-model",
+					},
+					{
+						Board:     "ventunoq",
+						ModelName: "ventunoq-model",
+					},
+				},
+			},
+			expectedModelName: "ventunoq-model",
+		},
+		{
+			name:      "Brick with one default model",
+			boardName: "ventunoq",
+			brick: bricksindex.Brick{
+				ModelName:    "defaultModelName",
+				ModelByBoard: []bricksindex.ModelsBoard{},
+			},
+			expectedModelName: "defaultModelName",
+		},
+		{
+			name:      "Brick with one default model and null value for the Board Models",
+			boardName: "ventunoq",
+			brick: bricksindex.Brick{
+				ModelName:    "defaultModelName",
+				ModelByBoard: nil,
+			},
+			expectedModelName: "defaultModelName",
+		},
+		{
+			name:      "Brick with one model and no board type",
+			boardName: "ventunoq",
+			brick: bricksindex.Brick{
+				ModelName: "defaultModelName",
+			},
+
+			expectedModelName: "defaultModelName",
+		},
+		{
+			name:      "Brick with a default models and the board type override",
+			boardName: "ventunoq",
+			brick: bricksindex.Brick{
+				ModelName: "defaultModelName",
+				ModelByBoard: []bricksindex.ModelsBoard{
+					{
+						Board:     "unoq",
+						ModelName: "unoq-model",
+					},
+					{
+						Board:     "ventunoq",
+						ModelName: "ventunoq-model",
+					},
+				},
+			},
+			expectedModelName: "ventunoq-model",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			modelName := tt.brick.GetModelNameByBoard(tt.boardName)
+			require.Equal(t, tt.expectedModelName, modelName)
+		})
+	}
+
 }

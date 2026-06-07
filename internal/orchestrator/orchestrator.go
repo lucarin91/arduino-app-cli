@@ -1207,23 +1207,23 @@ func migrateRemoveRouterBridgeIfNeeded(ctx context.Context, platform platform.Pl
 }
 
 type ConfigResponse struct {
-	Directories ConfigDirectories `json:"directories"`
+	Directories  ConfigDirectories `json:"directories"`
+	PythonRunner string            `json:"python_runner"`
 }
 
 type ConfigDirectories struct {
-	Data         string `json:"data"`
-	Apps         string `json:"apps"`
-	Examples     string `json:"examples"`
-	PythonRunner string `json:"python_runner"`
+	Data     string `json:"data"`
+	Apps     string `json:"apps"`
+	Examples string `json:"examples"`
 }
 
 func GetOrchestratorConfig(cfg config.Configuration) ConfigResponse {
 	return ConfigResponse{
 		Directories: ConfigDirectories{
-			Data:         cfg.DataDir().String(),
-			Apps:         cfg.AppsDir().String(),
-			Examples:     cfg.ExamplesDir().String(),
-			PythonRunner: cfg.RunnerVersion,
+			Data:     cfg.DataDir().String(),
+			Apps:     cfg.AppsDir().String(),
+			Examples: cfg.ExamplesDir().String(),
 		},
+		PythonRunner: cfg.RunnerVersion,
 	}
 }

@@ -1211,17 +1211,19 @@ type ConfigResponse struct {
 }
 
 type ConfigDirectories struct {
-	Data     string `json:"data"`
-	Apps     string `json:"apps"`
-	Examples string `json:"examples"`
+	Data         string `json:"data"`
+	Apps         string `json:"apps"`
+	Examples     string `json:"examples"`
+	PythonRunner string `json:"python_runner"`
 }
 
 func GetOrchestratorConfig(cfg config.Configuration) ConfigResponse {
 	return ConfigResponse{
 		Directories: ConfigDirectories{
-			Data:     cfg.DataDir().String(),
-			Apps:     cfg.AppsDir().String(),
-			Examples: cfg.ExamplesDir().String(),
+			Data:         cfg.DataDir().String(),
+			Apps:         cfg.AppsDir().String(),
+			Examples:     cfg.ExamplesDir().String(),
+			PythonRunner: cfg.RunnerVersion,
 		},
 	}
 }

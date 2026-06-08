@@ -1207,7 +1207,8 @@ func migrateRemoveRouterBridgeIfNeeded(ctx context.Context, platform platform.Pl
 }
 
 type ConfigResponse struct {
-	Directories ConfigDirectories `json:"directories"`
+	Directories  ConfigDirectories `json:"directories"`
+	PythonRunner string            `json:"python_runner"`
 }
 
 type ConfigDirectories struct {
@@ -1223,5 +1224,6 @@ func GetOrchestratorConfig(cfg config.Configuration) ConfigResponse {
 			Apps:     cfg.AppsDir().String(),
 			Examples: cfg.ExamplesDir().String(),
 		},
+		PythonRunner: cfg.RunnerVersion,
 	}
 }

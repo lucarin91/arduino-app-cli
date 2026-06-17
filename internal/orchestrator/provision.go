@@ -459,32 +459,35 @@ type serviceInfo struct {
 }
 
 func extractServicesFromComposeFile(composeFile *paths.Path) ([]serviceInfo, error) {
-	content, err := os.ReadFile(composeFile.String())
+	content, err := composeFile.ReadFile()
 	if err != nil {
 		return nil, err
 	}
 
-	type serviceMin struct {
-		Image       string  `yaml:"image"`
-		User        *string `yaml:"user,omitempty"`
-		Healthcheck struct {
-			Test []string `yaml:"test"`
-		} `yaml:"healthcheck,omitempty"`
-	}
-	type composeServices struct {
-		Services map[string]serviceMin `yaml:"services"`
-	}
-	var index composeServices
-	if err := yaml.Unmarshal(content, &index); err != nil {
+	prj, err := loader.LoadWithContext(
+		context.Background(),
+		types.ConfigDetails{
+			ConfigFiles: []types.ConfigFile{{Content: content}},
+			Environment: types.NewMapping(os.Environ()),
+		},
+		func(o *loader.Options) { o.SetProjectName("default", false); o.SkipConsistencyCheck = true },
+		loader.WithSkipValidation,
+	)
+	if err != nil {
 		return nil, err
 	}
-	services := make([]serviceInfo, 0, len(index.Services))
-	for svc, svcDef := range index.Services {
-		hasHealthcheck := len(svcDef.Healthcheck.Test) > 0
+
+	services := make([]serviceInfo, 0, len(prj.Services))
+	for name, svc := range prj.Services {
+		hasHealthcheck := svc.HealthCheck != nil && len(svc.HealthCheck.Test) > 0
+		var userPtr *string
+		if svc.User != "" {
+			userPtr = new(svc.User)
+		}
 		services = append(services, serviceInfo{
-			name:           svc,
+			name:           name,
 			hasHealthcheck: hasHealthcheck,
-			user:           svcDef.User,
+			user:           userPtr,
 		})
 	}
 	return services, nil
@@ -552,7 +555,6 @@ func generateServicesOverrideFile(arduinoApp *app.ArduinoApp, services []service
 	return nil
 }
 
-
 // provisionComposeVolumes ensures we create the parent folder with the correct owner.
 // By default docker if it doesn't find the folder, it will create it as root.
 // We do not want that, to make sure to have it as `arduino:arduino` we have
@@ -576,7 +578,8 @@ func provisionComposeVolumes(composeFilePath string, arduinoApp *app.ArduinoApp,
 			ConfigFiles: []types.ConfigFile{{Content: content}},
 			Environment: env,
 		},
-		func(o *loader.Options) { o.SetProjectName("default", false) },
+		func(o *loader.Options) { o.SetProjectName("default", false); o.SkipConsistencyCheck = true },
+		loader.WithSkipValidation,
 	)
 	if err != nil {
 		slog.Warn("Failed to parse compose file for volume provisioning", slog.String("compose_file", composeFilePath), slog.Any("error", err))

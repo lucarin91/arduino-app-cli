@@ -161,9 +161,8 @@ services:
 		env := map[string]string{
 			"CUSTOM_PATH": tempDirectory,
 		}
-		volumes, err := extractVolumesFromComposeFile(volumesFromFile.String())
-		require.Nil(t, err, "Failed to extract volumes from compose file")
-		provisionComposeVolumes(volumesFromFile.String(), volumes, app, env)
+		
+		provisionComposeVolumes(volumesFromFile.String(), app, env)
 		require.True(t, app.FullPath.Join("data").Join("influx-data").Exist(), "Volume directory should exist")
 	})
 
@@ -194,9 +193,8 @@ services:
 		}
 		// No env, use macro default value
 		env := map[string]string{}
-		volumes, err := extractVolumesFromComposeFile(volumesFromFile.String())
-		require.Nil(t, err, "Failed to extract volumes from compose file")
-		provisionComposeVolumes(volumesFromFile.String(), volumes, app, env)
+		
+		provisionComposeVolumes(volumesFromFile.String(), app, env)
 		require.True(t, app.FullPath.Join("customized").Join("data").Join("influx-data").Exist(), "Volume directory should exist")
 	})
 
@@ -227,9 +225,8 @@ services:
 		os.Setenv("DEFVALUE", tempDirectory)
 
 		env := map[string]string{}
-		volumes, err := extractVolumesFromComposeFile(volumesFromFile.String())
-		require.Nil(t, err, "Failed to extract volumes from compose file")
-		provisionComposeVolumes(volumesFromFile.String(), volumes, app, env)
+		
+		provisionComposeVolumes(volumesFromFile.String(), app, env)
 		require.True(t, app.FullPath.Join("customized").Join("data").Join("influx-data").Exist(), "Volume directory should exist")
 	})
 
@@ -259,9 +256,8 @@ services:
 			FullPath: paths.New(tempDirectory),
 		}
 		env := map[string]string{}
-		volumes, err := extractVolumesFromComposeFile(volumesFromFile.String())
-		require.Nil(t, err, "Failed to extract volumes from compose file")
-		provisionComposeVolumes(volumesFromFile.String(), volumes, app, env)
+		
+		provisionComposeVolumes(volumesFromFile.String(), app, env)
 		require.True(t, app.FullPath.Join("data").Join("influx-data").Exist(), "Volume directory should exist")
 	})
 
@@ -289,9 +285,8 @@ services:
 			FullPath: paths.New(tempDirectory),
 		}
 		env := map[string]string{}
-		volumes, err := extractVolumesFromComposeFile(volumesFromFile.String())
-		require.Nil(t, err, "Failed to extract volumes from compose file")
-		provisionComposeVolumes(volumesFromFile.String(), volumes, app, env)
+		
+		provisionComposeVolumes(volumesFromFile.String(), app, env)
 		require.True(t, app.FullPath.Join("data").Join("influx-data").Exist(), "Volume directory should exist")
 	})
 

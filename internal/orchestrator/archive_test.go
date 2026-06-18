@@ -34,6 +34,7 @@ func TestExportAppZip(t *testing.T) {
 		name             string
 		appName          string
 		files            []string
+		symlinks         map[string]string // link name -> target
 		nonExistent      bool
 		includeData      bool
 		wantFiles        []string
@@ -78,6 +79,26 @@ func TestExportAppZip(t *testing.T) {
 			nonExistent: true,
 			wantErr:     true,
 		},
+		{
+			name:         "Symlink to file is included in zip",
+			appName:      "Symlink File App",
+			files:        []string{"app.yaml", "bricks-list.yaml"},
+			symlinks:     map[string]string{"bricks-copy.yaml": "bricks-list.yaml"},
+			includeData:  false,
+			wantErr:      false,
+			wantFilename: "symlink-file-app.zip",
+			wantFiles:    []string{"app.yaml", "bricks-list.yaml", "bricks-copy.yaml"},
+		},
+		{
+			name:         "Symlink to directory is included in zip",
+			appName:      "Symlink Dir App",
+			files:        []string{"app.yaml", "data/foo.txt"},
+			symlinks:     map[string]string{"data2": "data"},
+			includeData:  true,
+			wantErr:      false,
+			wantFilename: "symlink-dir-app.zip",
+			wantFiles:    []string{"app.yaml", "data/foo.txt", "data2/foo.txt"},
+		},
 	}
 
 	for _, tc := range tests {
@@ -85,6 +106,7 @@ func TestExportAppZip(t *testing.T) {
 			tmpDir := t.TempDir()
 
 			writeFiles(t, tmpDir, tc.files)
+			writeSymlinks(t, tmpDir, tc.symlinks)
 
 			appPath := tmpDir
 			if tc.nonExistent {
@@ -334,6 +356,16 @@ func writeFiles(t *testing.T, tmpPath string, files []string) {
 		dstPath := filepath.Join(tmpPath, path)
 		require.NoError(t, os.MkdirAll(filepath.Dir(dstPath), 0755))
 		require.NoError(t, os.WriteFile(dstPath, content, 0600))
+	}
+}
+
+func writeSymlinks(t *testing.T, tmpPath string, symlinks map[string]string) {
+	t.Helper()
+
+	for linkName, target := range symlinks {
+		linkPath := filepath.Join(tmpPath, linkName)
+		require.NoError(t, os.MkdirAll(filepath.Dir(linkPath), 0755))
+		require.NoError(t, os.Symlink(target, linkPath))
 	}
 }
 

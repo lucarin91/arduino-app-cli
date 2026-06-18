@@ -6,6 +6,7 @@
 package orchestrator
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -234,13 +235,19 @@ func generateMainComposeFile(
 		}
 
 		// 2. Retrieve the required singleton services
-		for _, id := range idxBrick.RequiresServices {
-			idxService, found := servicesIndex.FindServiceByID(id)
+		matchingServices, err := idxBrick.GetMatchingService(bricksindex.BrickInstance{
+			Model: cmp.Or(brick.Model, idxBrick.GetModelNameByBoard(platform.BoardName)),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to get required services for brick %s: %w", brick.ID, err)
+		}
+		for _, id := range matchingServices {
+			service, found := servicesIndex.FindServiceByID(id)
 			if !found {
 				slog.Debug("service required by brick not found or not available for current board", slog.String("service_id", id), slog.String("brick_id", brick.ID))
 				continue
 			}
-			brickServices[id] = *idxService
+			brickServices[id] = *service
 		}
 
 		// 3. Retrieve the brick_compose.yaml file.

@@ -244,6 +244,80 @@ func TestBricksIndexYAMLFormats(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "requires_services as plain string list",
+			yamlContent: `bricks:
+- id: arduino:simple_brick
+  name: Test Brick
+  description: A test brick
+  requires_services:
+  - arduino:genie_audio
+  - arduino:other_service
+`,
+			expectedBricks: []Brick{
+				{
+					ID:          "arduino:simple_brick",
+					Name:        "Test Brick",
+					Description: "A test brick",
+					RequiresServices: []RequiresService{
+						{ID: "arduino:genie_audio"},
+						{ID: "arduino:other_service"},
+					},
+				},
+			},
+		},
+		{
+			name: "requires_services as struct list with when condition",
+			yamlContent: `bricks:
+- id: arduino:simple_brick
+  name: Test Brick
+  description: A test brick
+  requires_services:
+  - id: arduino:genie
+    when:
+      model: genie:*
+  - id: arduino:llamacpp_npu
+    when:
+      model: llamacpp:*
+`,
+			expectedBricks: []Brick{
+				{
+					ID:          "arduino:simple_brick",
+					Name:        "Test Brick",
+					Description: "A test brick",
+					RequiresServices: []RequiresService{
+						{ID: "arduino:genie", When: &RequiresServiceMatch{Model: new("genie:*")}},
+						{ID: "arduino:llamacpp_npu", When: &RequiresServiceMatch{Model: new("llamacpp:*")}},
+					},
+				},
+			},
+		},
+		{
+			name: "model_by_boards with platform and model fields",
+			yamlContent: `bricks:
+- id: arduino:brick_with_model_by_boards
+  name: Brick With Model By Boards
+  description: A brick with model_by_boards
+  model_name: default-model
+  model_by_boards:
+  - platform: ventunoq
+    model: ventunoq-model
+  - platform: portenta
+    model: portenta-model
+`,
+			expectedBricks: []Brick{
+				{
+					ID:          "arduino:brick_with_model_by_boards",
+					Name:        "Brick With Model By Boards",
+					Description: "A brick with model_by_boards",
+					ModelName:   "default-model",
+					ModelByBoard: []ModelsBoard{
+						{Platform: "ventunoq", Model: "ventunoq-model"},
+						{Platform: "portenta", Model: "portenta-model"},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -485,6 +559,256 @@ services
 				slices.Sort(got)
 				assert.Equal(t, tc.want, got)
 			}
+		})
+	}
+}
+
+func TestGetMatchingService(t *testing.T) {
+	tests := []struct {
+		name             string
+		requiresServices []RequiresService
+		brickInstance    BrickInstance
+		wantServices     []string
+		wantErr          bool
+	}{
+		{
+			name:             "no requires_services returns empty slice",
+			requiresServices: nil,
+			brickInstance:    BrickInstance{Model: "some-model"},
+			wantServices:     []string{},
+		},
+		{
+			name: "service with no when condition matches unconditionally",
+			requiresServices: []RequiresService{
+				{ID: "service-a", When: nil},
+			},
+			brickInstance: BrickInstance{Model: "any-model"},
+			wantServices:  []string{"service-a"},
+		},
+		{
+			name: "service with when but no model field matches unconditionally",
+			requiresServices: []RequiresService{
+				{ID: "service-b", When: &RequiresServiceMatch{Model: nil}},
+			},
+			brickInstance: BrickInstance{Model: "any-model"},
+			wantServices:  []string{"service-b"},
+		},
+		{
+			name: "service with matching model pattern returns service ID",
+			requiresServices: []RequiresService{
+				{ID: "service-c", When: &RequiresServiceMatch{Model: new("mobilenet-*")}},
+			},
+			brickInstance: BrickInstance{Model: "mobilenet-image-classification"},
+			wantServices:  []string{"service-c"},
+		},
+		{
+			name: "service with non-matching model pattern returns empty slice",
+			requiresServices: []RequiresService{
+				{ID: "service-d", When: &RequiresServiceMatch{Model: new("mobilenet-*")}},
+			},
+			brickInstance: BrickInstance{Model: "yolo-object-detection"},
+			wantServices:  []string{},
+		},
+		{
+			name: "only second service matches",
+			requiresServices: []RequiresService{
+				{ID: "service-e", When: &RequiresServiceMatch{Model: new("mobilenet-*")}},
+				{ID: "service-f", When: &RequiresServiceMatch{Model: new("yolo-*")}},
+			},
+			brickInstance: BrickInstance{Model: "yolo-object-detection"},
+			wantServices:  []string{"service-f"},
+		},
+		{
+			name: "multiple services match and all are returned",
+			requiresServices: []RequiresService{
+				{ID: "service-g", When: &RequiresServiceMatch{Model: new("mobilenet-*")}},
+				{ID: "service-h", When: nil},
+			},
+			brickInstance: BrickInstance{Model: "mobilenet-image-classification"},
+			wantServices:  []string{"service-g", "service-h"},
+		},
+		{
+			name: "no service matches returns empty slice",
+			requiresServices: []RequiresService{
+				{ID: "service-i", When: &RequiresServiceMatch{Model: new("mobilenet-*")}},
+				{ID: "service-j", When: &RequiresServiceMatch{Model: new("yolo-*")}},
+			},
+			brickInstance: BrickInstance{Model: "resnet-classification"},
+			wantServices:  []string{},
+		},
+		{
+			name: "invalid pattern returns error",
+			requiresServices: []RequiresService{
+				{ID: "service-k", When: &RequiresServiceMatch{Model: new("[invalid")}},
+			},
+			brickInstance: BrickInstance{Model: "any-model"},
+			wantErr:       true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			brick := Brick{RequiresServices: tt.requiresServices}
+			got, err := brick.GetMatchingService(tt.brickInstance)
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.wantServices, got)
+			}
+		})
+	}
+}
+
+func TestRequiresServicesUnmarshalYAML(t *testing.T) {
+	tests := []struct {
+		name        string
+		yaml        string
+		want        RequiresServices
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name: "list of plain strings",
+			yaml: `
+- arduino:genie_audio
+- arduino:other_service
+`,
+			want: RequiresServices{
+				{ID: "arduino:genie_audio"},
+				{ID: "arduino:other_service"},
+			},
+		},
+		{
+			name: "list of structs with when condition",
+			yaml: `
+- id: arduino:genie
+  when:
+    model: genie:*
+- id: arduino:llamacpp_npu
+  when:
+    model: llamacpp:*
+`,
+			want: RequiresServices{
+				{ID: "arduino:genie", When: &RequiresServiceMatch{Model: new("genie:*")}},
+				{ID: "arduino:llamacpp_npu", When: &RequiresServiceMatch{Model: new("llamacpp:*")}},
+			},
+		},
+		{
+			name: "mixed plain strings and structs",
+			yaml: `
+- arduino:genie_audio
+- id: arduino:genie
+  when:
+    model: genie:*
+`,
+			want: RequiresServices{
+				{ID: "arduino:genie_audio"},
+				{ID: "arduino:genie", When: &RequiresServiceMatch{Model: new("genie:*")}},
+			},
+		},
+		{
+			name: "struct with no when condition",
+			yaml: `
+- id: arduino:genie
+`,
+			want: RequiresServices{
+				{ID: "arduino:genie"},
+			},
+		},
+		{
+			name:        "not a sequence",
+			yaml:        `arduino:genie_audio`,
+			wantErr:     true,
+			errContains: "requires_services: expected a sequence",
+		},
+		{
+			name: "unexpected node type in sequence",
+			yaml: `
+- - nested
+`,
+			wantErr:     true,
+			errContains: "requires_services: unexpected node type",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got RequiresServices
+			err := yaml.Unmarshal([]byte(tt.yaml), &got)
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errContains)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.want, got)
+			}
+		})
+	}
+}
+
+func TestGetModelNameByBoard(t *testing.T) {
+	tests := []struct {
+		name      string
+		brick     Brick
+		boardName string
+		want      string
+	}{
+		{
+			name: "returns model for matching platform",
+			brick: Brick{
+				ModelName: "default-model",
+				ModelByBoard: []ModelsBoard{
+					{Platform: "ventunoq", Model: "ventunoq-model"},
+					{Platform: "portenta", Model: "portenta-model"},
+				},
+			},
+			boardName: "ventunoq",
+			want:      "ventunoq-model",
+		},
+		{
+			name: "falls back to default model name when board not in list",
+			brick: Brick{
+				ModelName: "default-model",
+				ModelByBoard: []ModelsBoard{
+					{Platform: "ventunoq", Model: "ventunoq-model"},
+				},
+			},
+			boardName: "portenta",
+			want:      "default-model",
+		},
+		{
+			name: "empty board name returns default model name",
+			brick: Brick{
+				ModelName: "default-model",
+				ModelByBoard: []ModelsBoard{
+					{Platform: "ventunoq", Model: "ventunoq-model"},
+				},
+			},
+			boardName: "",
+			want:      "default-model",
+		},
+		{
+			name: "empty model_by_boards returns default model name",
+			brick: Brick{
+				ModelName:    "default-model",
+				ModelByBoard: nil,
+			},
+			boardName: "ventunoq",
+			want:      "default-model",
+		},
+		{
+			name:      "all empty returns empty string",
+			brick:     Brick{},
+			boardName: "ventunoq",
+			want:      "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.brick.GetModelNameByBoard(tt.boardName)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }

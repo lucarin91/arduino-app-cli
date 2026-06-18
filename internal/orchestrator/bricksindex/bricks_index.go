@@ -12,11 +12,13 @@ import (
 	"iter"
 	"log/slog"
 	"os"
+	"path"
 	"slices"
 	"strings"
 
 	"github.com/arduino/go-paths-helper"
 	yaml "github.com/goccy/go-yaml"
+	"github.com/goccy/go-yaml/ast"
 
 	"github.com/arduino/arduino-app-cli/internal/orchestrator/peripherals"
 	"github.com/arduino/arduino-app-cli/internal/platform"
@@ -63,12 +65,48 @@ type BrickVariable struct {
 }
 
 type ModelsBoard struct {
-	Board     string `yaml:"board"`
-	ModelName string `yaml:"model_name"`
+	Platform string `yaml:"platform"`
+	Model    string `yaml:"model"`
 }
 
 func (v BrickVariable) IsRequired() bool {
 	return v.DefaultValue == ""
+}
+
+type RequiresServices []RequiresService
+
+type RequiresService struct {
+	ID   string                `yaml:"id"`
+	When *RequiresServiceMatch `yaml:"when,omitempty"`
+}
+
+type RequiresServiceMatch struct {
+	Model *string `yaml:"model,omitempty"`
+}
+
+func (r *RequiresServices) UnmarshalYAML(node ast.Node) error {
+	seq, ok := node.(*ast.SequenceNode)
+	if !ok {
+		return fmt.Errorf("requires_services: expected a sequence, got %s", node.Type())
+	}
+	*r = make(RequiresServices, 0, len(seq.Values))
+	for _, item := range seq.Values {
+		switch item.Type() {
+		case ast.StringType:
+			// Plain string form: "- arduino:genie_audio"
+			*r = append(*r, RequiresService{ID: item.(*ast.StringNode).Value})
+		case ast.MappingType:
+			// Struct form: "- id: arduino:genie\n  when:\n    model: genie:*"
+			var svc RequiresService
+			if err := yaml.Unmarshal([]byte(item.String()), &svc); err != nil {
+				return fmt.Errorf("requires_services: failed to unmarshal service entry: %w", err)
+			}
+			*r = append(*r, svc)
+		default:
+			return fmt.Errorf("requires_services: unexpected node type %s", item.Type())
+		}
+	}
+	return nil
 }
 
 type Brick struct {
@@ -87,7 +125,7 @@ type Brick struct {
 	ModelByBoard                []ModelsBoard             `yaml:"model_by_boards,omitempty"`
 	MountDevicesIntoContainer   bool                      `yaml:"mount_devices_into_container,omitempty"`
 	RequiredDevices             []peripherals.DeviceClass `yaml:"required_devices,omitempty"`
-	RequiresServices            []string                  `yaml:"requires_services,omitempty"`
+	RequiresServices            RequiresServices          `yaml:"requires_services,omitempty"`
 	ModelConfigurationVariables []string                  `yaml:"model_configuration_variables,omitempty"`
 
 	Source string `yaml:"-"`
@@ -173,13 +211,42 @@ func (b Brick) GetModelNameByBoard(boardName string) string {
 	modelsBoard := b.ModelByBoard
 	if boardName != "" {
 		idx := slices.IndexFunc(modelsBoard, func(mb ModelsBoard) bool {
-			return mb.Board == boardName
+			return mb.Platform == boardName
 		})
 		if idx != -1 {
-			return modelsBoard[idx].ModelName
+			return modelsBoard[idx].Model
 		}
 	}
 	return defaultModelName
+}
+
+type BrickInstance struct {
+	Model string
+}
+
+// GetMatchingService returns the list of service IDs required by the brick for the given instance.
+// It evaluates any conditional constraints (e.g. model pattern matching) defined in each RequiresService entry.
+//
+// A service with no "when" condition is always included. A service with "when.model" is included
+// only when the instance model matches the pattern (e.g. "genie:*" matches "genie:mini", "genie:pro").
+func (b Brick) GetMatchingService(brick BrickInstance) ([]string, error) {
+	services := make([]string, 0, len(b.RequiresServices))
+	for _, r := range b.RequiresServices {
+		if r.When == nil {
+			services = append(services, r.ID)
+			continue
+		}
+		if r.When.Model == nil {
+			services = append(services, r.ID)
+			continue
+		}
+		if ok, err := path.Match(*r.When.Model, brick.Model); err != nil {
+			return services, fmt.Errorf("invalid pattern in requires_services.when.model: %w", err)
+		} else if ok {
+			services = append(services, r.ID)
+		}
+	}
+	return services, nil
 }
 
 type YamlBricksIndex struct {

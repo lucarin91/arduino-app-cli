@@ -100,18 +100,18 @@ func TestExportAppZip(t *testing.T) {
 			wantFiles:    []string{"app.yaml", "data/foo.txt", "data2/foo.txt"},
 		},
 		{
-    name:    "Circular symlink does not loop",
-    appName: "Circular App",
-    files:   []string{"app.yaml"},
-    symlinks: map[string]string{
-        "link-a": "link-b",
-        "link-b": "link-a",
-    },
-    includeData:  false,
-    wantErr:      true, 
-    wantFilename: "circular-app.zip",
-    wantFiles:    []string{"app.yaml"},
-},
+			name:    "Circular symlink does not loop",
+			appName: "Circular App",
+			files:   []string{"app.yaml"},
+			symlinks: map[string]string{
+				"link-a": "link-b",
+				"link-b": "link-a",
+			},
+			includeData:  false,
+			wantErr:      true,
+			wantFilename: "circular-app.zip",
+			wantFiles:    []string{"app.yaml"},
+		},
 	}
 
 	for _, tc := range tests {

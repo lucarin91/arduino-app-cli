@@ -467,7 +467,8 @@ func extractServicesFromComposeFile(composeFile *paths.Path) ([]serviceInfo, err
 	prj, err := loader.LoadWithContext(
 		context.Background(),
 		types.ConfigDetails{
-			ConfigFiles: []types.ConfigFile{{Content: content}},
+			ConfigFiles: []types.ConfigFile{{Filename: composeFile.String(), Content: content}},
+			WorkingDir:  composeFile.Parent().String(),
 			Environment: types.NewMapping(os.Environ()),
 		},
 		func(o *loader.Options) { o.SetProjectName("default", false); o.SkipConsistencyCheck = true },
@@ -575,7 +576,8 @@ func provisionComposeVolumes(composeFilePath string, arduinoApp *app.ArduinoApp,
 	prj, err := loader.LoadWithContext(
 		context.Background(),
 		types.ConfigDetails{
-			ConfigFiles: []types.ConfigFile{{Content: content}},
+			ConfigFiles: []types.ConfigFile{{Filename: composeFilePath, Content: content}},
+			WorkingDir:  paths.New(composeFilePath).Parent().String(),
 			Environment: env,
 		},
 		func(o *loader.Options) { o.SetProjectName("default", false); o.SkipConsistencyCheck = true },

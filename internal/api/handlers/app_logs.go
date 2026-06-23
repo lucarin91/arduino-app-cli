@@ -6,6 +6,7 @@
 package handlers
 
 import (
+	"cmp"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -42,10 +43,10 @@ func HandleAppLogs(
 
 		queryParams := r.URL.Query()
 
-		showAppLogs, showServicesLogs := true, false
+		showAppLogs, showServicesLogs := true, true
 		if filter := queryParams.Get("filter"); filter != "" {
 			filters := strings.Split(strings.TrimSpace(filter), ",")
-			showServicesLogs = slices.Contains(filters, "services")
+			showServicesLogs = slices.Contains(filters, "bricks")
 			showAppLogs = slices.Contains(filters, "app")
 		}
 
@@ -79,8 +80,7 @@ func HandleAppLogs(
 		defer sseStream.Close()
 
 		type log struct {
-			ID      string `json:"id"`
-			BrickID string `json:"brick_id,omitempty"`
+			Source  string `json:"source,omitempty"`
 			Message string `json:"message"`
 		}
 		messagesIter, err := orchestrator.AppLogs(r.Context(), app, appLogsRequest, dockerClient, bricksIndex)
@@ -93,9 +93,8 @@ func HandleAppLogs(
 		}
 		for item := range messagesIter {
 			sseStream.Send(render.SSEEvent{Type: "message", Data: log{
-				ID:      item.Name,
 				Message: item.Content,
-				BrickID: item.BrickName,
+				Source:  cmp.Or(item.BrickName, "main"),
 			}})
 		}
 	}

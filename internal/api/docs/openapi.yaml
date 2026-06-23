@@ -668,7 +668,7 @@ paths:
           content:
             text/event-stream:
               schema:
-                type: string
+                $ref: '#/components/schemas/ResponceLogs'
           description: OK
         "400":
           $ref: '#/components/responses/BadRequest'
@@ -1766,6 +1766,8 @@ components:
       properties:
         directories:
           $ref: '#/components/schemas/ConfigDirectories'
+        python_runner:
+          type: string
       type: object
     CreateAppRequest:
       properties:
@@ -1945,6 +1947,13 @@ components:
             type: string
           nullable: true
           type: array
+      type: object
+    ResponceLogs:
+      properties:
+        message:
+          type: string
+        source:
+          type: string
       type: object
     SketchAddLibraryResponse:
       properties:

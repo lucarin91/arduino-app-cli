@@ -22,6 +22,11 @@ import (
 	"github.com/arduino/arduino-app-cli/internal/render"
 )
 
+type ResponceLogs struct {
+	Source  string `json:"source,omitempty"`
+	Message string `json:"message"`
+}
+
 func HandleAppLogs(
 	dockerClient command.Cli,
 	idProvider *app.IDProvider,
@@ -79,10 +84,6 @@ func HandleAppLogs(
 		}
 		defer sseStream.Close()
 
-		type log struct {
-			Source  string `json:"source,omitempty"`
-			Message string `json:"message"`
-		}
 		messagesIter, err := orchestrator.AppLogs(r.Context(), app, appLogsRequest, dockerClient, bricksIndex)
 		if err != nil {
 			sseStream.SendError(render.SSEErrorData{
@@ -92,7 +93,7 @@ func HandleAppLogs(
 			return
 		}
 		for item := range messagesIter {
-			sseStream.Send(render.SSEEvent{Type: "message", Data: log{
+			sseStream.Send(render.SSEEvent{Type: "message", Data: ResponceLogs{
 				Message: item.Content,
 				Source:  cmp.Or(item.BrickName, "main"),
 			}})

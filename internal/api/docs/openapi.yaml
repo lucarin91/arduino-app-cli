@@ -1950,6 +1950,8 @@ components:
       type: object
     ResponceLogs:
       properties:
+        id:
+          type: string
         message:
           type: string
         source:

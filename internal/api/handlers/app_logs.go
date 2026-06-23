@@ -23,7 +23,11 @@ import (
 )
 
 type ResponceLogs struct {
-	Source  string `json:"source,omitempty"`
+	// Source is either `python` or the name of the brick that produced the log message.
+	Source string `json:"source"`
+	// ID is the low-level docker container identifier.
+	ID string `json:"id"`
+	// Message is the log message.
 	Message string `json:"message"`
 }
 
@@ -95,7 +99,8 @@ func HandleAppLogs(
 		for item := range messagesIter {
 			sseStream.Send(render.SSEEvent{Type: "message", Data: ResponceLogs{
 				Message: item.Content,
-				Source:  cmp.Or(item.BrickName, "main"),
+				ID:      item.Name,
+				Source:  cmp.Or(item.BrickName, "python"),
 			}})
 		}
 	}

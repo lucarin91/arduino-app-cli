@@ -12,8 +12,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
+	"syscall"
 
 	"path/filepath"
 	"strings"
@@ -52,37 +52,44 @@ func zipAppToBuffer(bricksIndex *bricksindex.BricksIndex, sourcePath string, roo
 	buf := new(bytes.Buffer)
 	zipWriter := zip.NewWriter(buf)
 
-	err := filepath.WalkDir(sourcePath, func(path string, d fs.DirEntry, err error) error {
+	skipFilter := func(p *paths.Path) bool {
+		name := p.Base()
+		if name == ".cache" {
+			return false
+		}
+		if !includeData && name == "data" {
+			return false
+		}
+		return true
+	}
+
+	entries, err := paths.New(sourcePath).ReadDirRecursiveFiltered(skipFilter, skipFilter)
+	if err != nil {
+		zipWriter.Close()
+		return nil, err
+	}
+
+	for _, entry := range entries {
+		relPath, err := filepath.Rel(sourcePath, entry.String())
 		if err != nil {
-			return err
+			zipWriter.Close()
+			return nil, err
 		}
 
-		relPath, err := filepath.Rel(sourcePath, path)
+		info, err := entry.Stat() // follows symlinks
 		if err != nil {
-			return err
-		}
-		if relPath == "." {
-			return nil
-		}
-		if d.IsDir() {
-			name := d.Name()
-			// Always skip .cache
-			if name == ".cache" {
-				return filepath.SkipDir
+			if errors.Is(err, syscall.ELOOP) {
+				// skip symlink loops
+				continue
 			}
-			// Conditionally skip data
-			if !includeData && name == "data" {
-				return filepath.SkipDir
-			}
+			zipWriter.Close()
+			return nil, err
 		}
 
-		info, err := d.Info()
-		if err != nil {
-			return err
-		}
 		header, err := zip.FileInfoHeader(info)
 		if err != nil {
-			return err
+			zipWriter.Close()
+			return nil, err
 		}
 
 		header.Name = filepath.ToSlash(filepath.Join(rootFolderName, relPath))
@@ -91,36 +98,41 @@ func zipAppToBuffer(bricksIndex *bricksindex.BricksIndex, sourcePath string, roo
 		} else {
 			header.Method = zip.Deflate
 		}
+
 		writer, err := zipWriter.CreateHeader(header)
 		if err != nil {
-			return err
+			zipWriter.Close()
+			return nil, err
 		}
 
 		if info.IsDir() {
-			return nil
+			continue
 		}
 
-		if d.Name() == "app.yaml" { // nolint:goconst
-			desc, err := app.ParseDescriptorFile(paths.New(path))
+		if entry.Base() == "app.yaml" { // nolint:goconst
+			desc, err := app.ParseDescriptorFile(entry)
 			if err != nil {
-				return err
+				zipWriter.Close()
+				return nil, err
 			}
 			redactSecrets(bricksIndex, &desc)
-			err = yaml.NewEncoder(writer).Encode(desc)
-			return err
-		} else {
-			file, err := os.Open(path) // nolint:gosec
-			if err != nil {
-				return err
+			if err := yaml.NewEncoder(writer).Encode(desc); err != nil {
+				zipWriter.Close()
+				return nil, err
 			}
-			defer file.Close()
-			_, err = io.Copy(writer, file)
-			return err
+		} else {
+			file, err := entry.Open() // nolint:gosec
+			if err != nil {
+				zipWriter.Close()
+				return nil, err
+			}
+			_, copyErr := io.Copy(writer, file)
+			file.Close()
+			if copyErr != nil {
+				zipWriter.Close()
+				return nil, copyErr
+			}
 		}
-	})
-	if err != nil {
-		zipWriter.Close()
-		return nil, err
 	}
 
 	if err := zipWriter.Close(); err != nil {

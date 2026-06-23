@@ -108,7 +108,7 @@ func TestExportAppZip(t *testing.T) {
 				"link-b": "link-a",
 			},
 			includeData:  false,
-			wantErr:      true,
+			wantErr:      false,
 			wantFilename: "circular-app.zip",
 			wantFiles:    []string{"app.yaml"},
 		},

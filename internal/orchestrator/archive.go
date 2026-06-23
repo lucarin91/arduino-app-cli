@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"syscall"
 
 	"path/filepath"
 	"strings"
@@ -77,6 +78,10 @@ func zipAppToBuffer(bricksIndex *bricksindex.BricksIndex, sourcePath string, roo
 
 		info, err := entry.Stat() // follows symlinks
 		if err != nil {
+			if errors.Is(err, syscall.ELOOP) {
+				// skip symlink loops
+				continue
+			}
 			zipWriter.Close()
 			return nil, err
 		}

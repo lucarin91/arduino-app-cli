@@ -48,7 +48,7 @@ func NewOpenApiGenerator(version string) *Generator {
 	reflector := openapi3.NewReflector()
 	reflector.Spec.Info.WithTitle("Arduino-App-Cli").WithVersion(version)
 	reflector.Spec.Servers = append(reflector.Spec.Servers, openapi3.Server{
-		URL:         "http://localhost:6060",
+		URL:         "http://localhost:8800",
 		Description: new("local server"),
 	})
 

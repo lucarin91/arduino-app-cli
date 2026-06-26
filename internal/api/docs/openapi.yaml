@@ -4,7 +4,7 @@ info:
   version: 0.1.0
 servers:
 - description: local server
-  url: http://localhost:6060
+  url: http://localhost:8800
 tags:
 - name: Application
 - name: Brick

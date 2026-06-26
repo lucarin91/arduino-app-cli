@@ -47,7 +47,7 @@ tasks:
 
   install:oapi-codegen:
     cmds:
-      - go get -tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
+      - go get -tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.7.1
 
   test:
     desc: Run all tests

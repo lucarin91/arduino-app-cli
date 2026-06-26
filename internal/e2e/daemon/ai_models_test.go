@@ -96,7 +96,8 @@ func TestAIModelDetails(t *testing.T) {
 
 		require.NotNil(t, modelDetails.Runner, "Response model's Runner should not be nil")
 		require.Equal(t, *expectedModel.Runner, *modelDetails.Runner, "Runner should match")
-		require.Nil(t, modelDetails.DiskUsage, "Response model's DiskUsage should be nil")
+		require.NotNil(t, modelDetails.Size, "Response model's Size should not	 be nil")
+		require.Equal(t, *expectedModel.Size, *modelDetails.Size, "Size should match")
 
 	})
 
@@ -124,7 +125,8 @@ func TestAIModelDetails(t *testing.T) {
 			Runner:      new(""),
 			Description: new("this is the description of the model"),
 			BrickIds:    &[]string{"arduino:audio_classification"},
-			DiskUsage:   new(222),
+			Installed:   new(true),
+			Size:        new(1),
 		}, got, "The returned model details should match the expected values")
 
 		// TODO test metadata and model configuration contents and runner

@@ -238,7 +238,7 @@ func TestUpdateBrick(t *testing.T) {
 		require.Nil(t, paths.New("testdata/dummy-app-for-model").CopyDirTo(tempDummyApp))
 		bricksIndex, err := bricksindex.Load(platform.GetPlatform(nil), paths.New("testdata"))
 		require.NoError(t, err)
-		modelsIndex, err := modelsindex.Load(platform.GetPlatform(nil), paths.New("testdata"), paths.New("not_exixsting_path"))
+		modelsIndex, err := modelsindex.Load(platform.GetPlatform(nil), paths.New("testdata"), paths.New("not_exixsting_path"), nil, config.Configuration{})
 		require.NoError(t, err)
 		brickService := NewService(modelsIndex, bricksIndex)
 
@@ -416,10 +416,10 @@ bricks:
 		InternalModels: []modelsindex.AIModel{
 
 			{
-				ID:                "yolox-object-detection",
-				Name:              "General purpose object detection - YoloX",
-				ModuleDescription: "General purpose object detection...",
-				Bricks:            []modelsindex.BrickConfig{{ID: "arduino:object_detection"}, {ID: "arduino:video_object_detection"}},
+				ID:          "yolox-object-detection",
+				Name:        "General purpose object detection - YoloX",
+				Description: "General purpose object detection...",
+				Bricks:      []modelsindex.BrickConfig{{ID: "arduino:object_detection"}, {ID: "arduino:video_object_detection"}},
 			},
 			{
 				ID:     "face-detection",
@@ -587,10 +587,10 @@ bricks:
 		InternalModels: []modelsindex.AIModel{
 
 			{
-				ID:                "yolox-object-detection",
-				Name:              "General purpose object detection - YoloX",
-				ModuleDescription: "General purpose object detection...",
-				Bricks:            []modelsindex.BrickConfig{{ID: "arduino:object_detection"}, {ID: "arduino:video_object_detection"}},
+				ID:          "yolox-object-detection",
+				Name:        "General purpose object detection - YoloX",
+				Description: "General purpose object detection...",
+				Bricks:      []modelsindex.BrickConfig{{ID: "arduino:object_detection"}, {ID: "arduino:video_object_detection"}},
 			},
 			{
 				ID:     "face-detection",
@@ -774,10 +774,10 @@ func TestAppBrickInstancesList(t *testing.T) {
 		modelsIndex: &modelsindex.ModelsIndex{
 			InternalModels: []modelsindex.AIModel{
 				{
-					ID:                "yolox-object-detection",
-					Name:              "General purpose object detection - YoloX",
-					ModuleDescription: "a-model-description",
-					Bricks:            []modelsindex.BrickConfig{{ID: "arduino:object_detection"}},
+					ID:          "yolox-object-detection",
+					Name:        "General purpose object detection - YoloX",
+					Description: "a-model-description",
+					Bricks:      []modelsindex.BrickConfig{{ID: "arduino:object_detection"}},
 				},
 				{
 					ID:     "face-detection",

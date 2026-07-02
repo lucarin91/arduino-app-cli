@@ -58,9 +58,9 @@ type ModelHandler struct {
 func loadHandlers(dir *paths.Path, modelsDir *paths.Path, cfg config.Configuration, plat platform.Platform) (*HandlersIndex, error) {
 	// TODO : we should add a method on config to return env variables
 	configEnv := map[string]string{
-		"DOCKER_REGISTRY_BASE":                 cfg.DockerRegistryBase(),
-		"BOARD_NAME":                           plat.BoardName,
-		"ARDUINO_APP_BRICKS__CUSTOM_MODEL_DIR": modelsDir.String(),
+		"DOCKER_REGISTRY_BASE": cfg.DockerRegistryBase(),
+		"BOARD_NAME":           plat.BoardName,
+		"MODELS_PATH":          modelsDir.String(),
 	}
 
 	handlersFile := dir.Join("models-handlers.yaml")

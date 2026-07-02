@@ -31,10 +31,10 @@ func TestModelHandlerDownloadFlow(t *testing.T) {
 	}
 	modelID := cmp.Or(os.Getenv("E2E_MODEL_ID"), "melo-tts-es")
 
-	modelsDir := e2e.FindRepositoryRootPath(t).Join("custom-models")
+	modelsDir := e2e.FindRepositoryRootPath(t).Join("models")
 	t.Cleanup(func() { _ = modelsDir.RemoveAll() })
 
-	httpClient, daemonAddr := GetHttpclientAndAddr(t, e2e.WithCustomModelDir(modelsDir), e2e.WithBoardName("ventunoq"))
+	httpClient, daemonAddr := GetHttpclientAndAddr(t, e2e.WithModelsDir(modelsDir), e2e.WithBoardName("ventunoq"))
 	requestEditor := func(_ context.Context, _ *http.Request) error { return nil }
 	time.Sleep(2 * time.Second)
 

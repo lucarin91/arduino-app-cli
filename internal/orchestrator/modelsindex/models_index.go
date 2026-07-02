@@ -103,11 +103,12 @@ type BrickConfig struct {
 }
 
 type ModelsIndex struct {
-	InternalModels []AIModel
-	modelsDir      *paths.Path
-	Handlers       *HandlersIndex
-	cli            client.APIClient
-	plat           platform.Platform
+	InternalModels  []AIModel
+	modelsDir       *paths.Path
+	customModelsDir *paths.Path
+	Handlers        *HandlersIndex
+	cli             client.APIClient
+	plat            platform.Platform
 }
 
 func (m *ModelsIndex) GetModels(ctx context.Context) []AIModel {
@@ -172,17 +173,17 @@ func (m *ModelsIndex) IsModelSupportedByBrick(modelID, brickID string) bool {
 }
 
 func (m *ModelsIndex) loadDryModels() []AIModel {
-	eimodels, err := loadCustomModels(m.modelsDir)
+	eiModels, err := loadCustomModels(m.customModelsDir)
 	if err != nil {
 		slog.Error("cannot load edge impulse custom models", "err", err)
 	}
 	models := slices.Clone(m.InternalModels)
-	return append(models, eimodels...)
+	return append(models, eiModels...)
 }
 
 // Load constructs a ModelsIndex. Pass the result of LoadHandlers as handlers;
 // nil is accepted and disables handler-backed status checks.
-func Load(plat platform.Platform, dir *paths.Path, modelsDir *paths.Path, cli client.APIClient, cfg config.Configuration) (*ModelsIndex, error) {
+func Load(plat platform.Platform, dir *paths.Path, modelsDir *paths.Path, customModelsDir *paths.Path, cli client.APIClient, cfg config.Configuration) (*ModelsIndex, error) {
 	if dir == nil || modelsDir == nil {
 		return &ModelsIndex{}, errors.New("either dir or modelsDir must be provided")
 	}
@@ -204,11 +205,12 @@ func Load(plat platform.Platform, dir *paths.Path, modelsDir *paths.Path, cli cl
 	})
 
 	return &ModelsIndex{
-		InternalModels: models,
-		modelsDir:      modelsDir,
-		Handlers:       handlers,
-		cli:            cli,
-		plat:           plat,
+		InternalModels:  models,
+		customModelsDir: customModelsDir,
+		modelsDir:       modelsDir,
+		Handlers:        handlers,
+		cli:             cli,
+		plat:            plat,
 	}, nil
 }
 

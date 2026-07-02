@@ -239,6 +239,17 @@ bricks:
 	}
 }
 
+const impulseInfoJSON = `{
+	"success": true,
+	"impulse": {
+		"id": 1,
+		"name": "My Impulse",
+		"created": true,
+		"configured": true,
+		"complete": true
+	}
+}`
+
 type mockResponse struct {
 	status int
 	body   string
@@ -300,18 +311,6 @@ func TestInstallEIModel_WhenModelIsNotBuilt_ThanTriggerTheBuild(t *testing.T) {
 		}
 	}`
 
-	// GetImpulseInfo
-	impulseInfoJSON := `{
-		"success": true,
-		"impulse": {
-			"id": 1,
-			"name": "My Impulse",
-			"created": true,
-			"configured": true,
-			"complete": true
-		}
-	}`
-
 	responses := map[string]mockResponse{
 		"/api/100":                               {status: http.StatusOK, body: projectInfoJSON},
 		"/api/100/deployment/history":            {status: http.StatusOK, body: `{"success": true, "deployments": []}`},
@@ -332,7 +331,7 @@ func TestInstallEIModel_WhenModelIsNotBuilt_ThanTriggerTheBuild(t *testing.T) {
 	projectId := 100
 	impulseId := 1
 	tempDir := t.TempDir()
-	result, err := InstallEIModel(context.Background(), nil, &modelsindex.ModelsIndex{}, nil, client, paths.New(tempDir), projectId, impulseId)
+	result, err := InstallEIModel(context.Background(), nil, &modelsindex.ModelsIndex{}, nil, client, paths.New(tempDir), platform.Platform{BoardName: "unoq"}, projectId, impulseId)
 
 	// assert
 	require.NoError(t, err)
@@ -381,7 +380,7 @@ func TestInstallEIModel_WhenModelIsNotFullyTrained_ThanRaiseError(t *testing.T) 
 	projectId := 100
 	impulseId := 1
 	tempDir := t.TempDir()
-	_, err = InstallEIModel(context.Background(), nil, &modelsindex.ModelsIndex{}, nil, client, paths.New(tempDir), projectId, impulseId)
+	_, err = InstallEIModel(context.Background(), nil, &modelsindex.ModelsIndex{}, nil, client, paths.New(tempDir), platform.Platform{BoardName: "unoq"}, projectId, impulseId)
 
 	// assert
 	require.Equal(t, "impulse not ready for deployment for project 100 impulse 1", err.Error())
@@ -433,18 +432,6 @@ func TestInstallEIModel_WhenModelIsBuilt_DoNotTriggerTheBuild_and_StoreSucceeded
     ]
 	}`
 
-	// GetImpulseInfo
-	impulseInfoJSON := `{
-		"success": true,
-		"impulse": {
-			"id": 1,
-			"name": "My Impulse",
-			"created": true,
-			"configured": true,
-			"complete": true
-		}
-	}`
-
 	responses := map[string]mockResponse{
 		"/api/100":                               {status: http.StatusOK, body: projectInfoJSON},
 		"/api/100/deployment/history":            {status: http.StatusOK, body: deploymentHistoryJson},
@@ -463,7 +450,7 @@ func TestInstallEIModel_WhenModelIsBuilt_DoNotTriggerTheBuild_and_StoreSucceeded
 	projectId := 100
 	impulseId := 1
 	tempDir := t.TempDir()
-	result, err := InstallEIModel(context.Background(), nil, &modelsindex.ModelsIndex{}, nil, client, paths.New(tempDir), projectId, impulseId)
+	result, err := InstallEIModel(context.Background(), nil, &modelsindex.ModelsIndex{}, nil, client, paths.New(tempDir), platform.Platform{BoardName: "unoq"}, projectId, impulseId)
 
 	// assert
 	require.NoError(t, err)
@@ -481,6 +468,76 @@ func TestInstallEIModel_WhenModelIsBuilt_DoNotTriggerTheBuild_and_StoreSucceeded
 		"/api/100/deployment/history",
 		"/api/100/deployment/history/5/download",
 		"/api/100/impulse",
+	}
+	assertServerCalls(trackActualServercalls, expectedCalls, t)
+}
+
+func TestInstallEIModel_VentunoQ_UsesQNNDeviceType(t *testing.T) {
+	trackActualServercalls := []string{}
+
+	projectInfoJSON := `{
+		"success": true,
+		"project": {
+			"id": 200,
+			"name": "VentunoQ-Model",
+			"description": "QNN model for ventunoq",
+			"category": "missing-category",
+			"lastModified": "2026-02-05T12:00:00Z"
+		},
+		"impulse": {
+			"created": true,
+			"configured": true,
+			"complete": true
+		}
+	}`
+
+	buildOnDeviceJSON := `{
+		"success": true,
+		"id": 77701,
+		"deploymentVersion": 1,
+		"error": null
+	}`
+
+	waitForbuildCompletionJSON := `{
+		"success": true,
+		"job": {
+			"id": 77701,
+			"finished": "2026-02-05T18:00:00Z",
+			"finishedSuccessful": true,
+			"jobType": "build-on-device"
+		}
+	}`
+
+	responses := map[string]mockResponse{
+		"/api/200":                               {status: http.StatusOK, body: projectInfoJSON},
+		"/api/200/deployment/history":            {status: http.StatusOK, body: `{"success": true, "deployments": []}`},
+		"/api/200/jobs/build-ondevice-model":     {status: http.StatusOK, body: buildOnDeviceJSON},
+		"/api/200/jobs/77701/status":             {status: http.StatusOK, body: waitForbuildCompletionJSON},
+		"/api/200/deployment/history/1/download": {status: http.StatusOK, body: `fake-binary-data`},
+		"/api/200/impulse":                       {status: http.StatusOK, body: impulseInfoJSON},
+	}
+	server := setupMockEIServer(t, responses, &trackActualServercalls)
+	defer server.Close()
+
+	serverURL, err := url.Parse(server.URL)
+	require.NoError(t, err)
+	client, _ := edgeimpulse.NewEIClient("fake-key", *serverURL)
+
+	projectId := 200
+	impulseId := 1
+	tempDir := t.TempDir()
+	result, err := InstallEIModel(context.Background(), nil, &modelsindex.ModelsIndex{}, nil, client, paths.New(tempDir), platform.Platform{BoardName: "ventunoq"}, projectId, impulseId)
+
+	require.NoError(t, err)
+	require.Equal(t, "VentunoQ-Model", result.Name)
+
+	expectedCalls := []string{
+		"/api/200",
+		"/api/200/deployment/history",
+		"/api/200/jobs/build-ondevice-model",
+		"/api/200/jobs/77701/status",
+		"/api/200/deployment/history/1/download",
+		"/api/200/impulse",
 	}
 	assertServerCalls(trackActualServercalls, expectedCalls, t)
 }

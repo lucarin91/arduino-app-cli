@@ -50,7 +50,7 @@ func NewHTTPRouter(
 	mux.Handle("GET /v1/version", handlers.HandlerVersion(version))
 	mux.Handle("GET /v1/config", handlers.HandleConfig(cfg))
 	mux.Handle("GET /v1/bricks", handlers.HandleBrickList(brickService))
-	mux.Handle("GET /v1/bricks/{brickID}", handlers.HandleBrickDetails(brickService, idProvider, cfg))
+	mux.Handle("GET /v1/bricks/{brickID}", handlers.HandleBrickDetails(brickService, idProvider, cfg, platform))
 
 	mux.Handle("GET /v1/properties", handlers.HandlePropertyKeys(cfg))
 	mux.Handle("GET /v1/properties/{key}", handlers.HandlePropertyGet(cfg))
@@ -68,9 +68,9 @@ func NewHTTPRouter(
 	mux.Handle("PUT /v1/models/{modelID}", handlers.HandleInstallModel(dockerClient, modelsIndex, cfg, platform))
 	mux.Handle("DELETE /v1/models/{modelID}", handlers.HandlerDeleteModelByID(dockerClient, cfg, modelsIndex, bricksIndex, idProvider, platform))
 
-	mux.Handle("GET /v1/apps", handlers.HandleAppList(dockerClient, idProvider, bricksIndex, cfg))
+	mux.Handle("GET /v1/apps", handlers.HandleAppList(dockerClient, idProvider, bricksIndex, cfg, platform))
 	mux.Handle("POST /v1/apps", handlers.HandleAppCreate(idProvider, cfg))
-	mux.Handle("GET /v1/apps/events", handlers.HandlerAppStatus(dockerClient, idProvider, bricksIndex, cfg))
+	mux.Handle("GET /v1/apps/events", handlers.HandlerAppStatus(dockerClient, idProvider, bricksIndex, cfg, platform))
 	mux.Handle("GET /v1/apps/{appID}", handlers.HandleAppDetails(dockerClient, bricksIndex, idProvider, cfg))
 	mux.Handle("PATCH /v1/apps/{appID}", handlers.HandleAppDetailsEdits(dockerClient, bricksIndex, idProvider, cfg))
 	mux.Handle("GET /v1/apps/{appID}/logs", handlers.HandleAppLogs(dockerClient, idProvider, bricksIndex))

@@ -26,9 +26,11 @@ import (
 	"github.com/arduino/arduino-app-cli/internal/platform"
 )
 
+var unoQPlatform = platform.Platform{BoardName: "unoq"}
+
 func TestCloneApp(t *testing.T) {
 	cfg := setTestOrchestratorConfig(t)
-	idProvider := app.NewAppIDProvider(cfg)
+	idProvider := app.NewAppIDProvider(cfg, unoQPlatform)
 
 	originalAppID := f.Must(idProvider.ParseID("user:original-app"))
 	originalAppPath := originalAppID.ToPath()
@@ -148,7 +150,7 @@ func TestCloneApp(t *testing.T) {
 
 func TestEditApp(t *testing.T) {
 	cfg := setTestOrchestratorConfig(t)
-	idProvider := app.NewAppIDProvider(cfg)
+	idProvider := app.NewAppIDProvider(cfg, unoQPlatform)
 
 	t.Run("with default", func(t *testing.T) {
 		_, err := CreateApp(t.Context(), CreateAppRequest{Name: "app-default"}, idProvider, cfg)
@@ -234,7 +236,7 @@ func TestEditApp(t *testing.T) {
 
 func TestListApp(t *testing.T) {
 	cfg := setTestOrchestratorConfig(t)
-	idProvider := app.NewAppIDProvider(cfg)
+	idProvider := app.NewAppIDProvider(cfg, unoQPlatform)
 
 	docker, err := dockerClient.NewClientWithOpts(
 		dockerClient.FromEnv,
@@ -259,7 +261,7 @@ func TestListApp(t *testing.T) {
 			ShowApps:     true,
 			ShowExamples: true,
 			StatusFilter: "",
-		}, idProvider, nil, cfg)
+		}, idProvider, nil, cfg, unoQPlatform)
 		require.NoError(t, err)
 		assert.Empty(t, res.BrokenApps)
 		assert.Empty(t, gCmp.Diff([]AppInfo{
@@ -298,7 +300,7 @@ func TestListApp(t *testing.T) {
 			ShowApps:     true,
 			ShowExamples: false,
 			StatusFilter: "",
-		}, idProvider, nil, cfg)
+		}, idProvider, nil, cfg, unoQPlatform)
 		require.NoError(t, err)
 		assert.Empty(t, res.BrokenApps)
 		assert.Empty(t, gCmp.Diff([]AppInfo{
@@ -328,7 +330,7 @@ func TestListApp(t *testing.T) {
 			ShowApps:     false,
 			ShowExamples: true,
 			StatusFilter: "",
-		}, idProvider, nil, cfg)
+		}, idProvider, nil, cfg, unoQPlatform)
 		require.NoError(t, err)
 		assert.Empty(t, res.BrokenApps)
 		assert.Empty(t, gCmp.Diff([]AppInfo{
@@ -356,7 +358,7 @@ func TestListApp(t *testing.T) {
 
 		res, err := ListApps(t.Context(), dockerCli, ListAppRequest{
 			ShowApps: true,
-		}, idProvider, nil, cfg)
+		}, idProvider, nil, cfg, unoQPlatform)
 		require.NoError(t, err)
 
 		for _, a := range res.Apps {
@@ -387,7 +389,7 @@ func TestListApp(t *testing.T) {
 
 		res, err := ListApps(t.Context(), dockerCli, ListAppRequest{
 			ShowApps: true,
-		}, idProvider, nil, cfg)
+		}, idProvider, nil, cfg, unoQPlatform)
 		require.NoError(t, err)
 		require.Empty(t, res.BrokenApps)
 	})
@@ -395,7 +397,7 @@ func TestListApp(t *testing.T) {
 
 func TestListAppsFiltersByBricksIndex(t *testing.T) {
 	cfg := setTestOrchestratorConfig(t)
-	idProvider := app.NewAppIDProvider(cfg)
+	idProvider := app.NewAppIDProvider(cfg, unoQPlatform)
 
 	docker, err := dockerClient.NewClientWithOpts(
 		dockerClient.FromEnv,
@@ -444,14 +446,14 @@ bricks:
 	require.NoError(t, err)
 
 	t.Run("compatible example is listed", func(t *testing.T) {
-		res, err := ListApps(t.Context(), dockerCli, ListAppRequest{ShowExamples: true}, idProvider, idx, cfg)
+		res, err := ListApps(t.Context(), dockerCli, ListAppRequest{ShowExamples: true}, idProvider, idx, cfg, unoQPlatform)
 		require.NoError(t, err)
 		require.Len(t, res.Apps, 1)
 		assert.Equal(t, compatibleExID, res.Apps[0].ID)
 	})
 
 	t.Run("incompatible example is excluded", func(t *testing.T) {
-		res, err := ListApps(t.Context(), dockerCli, ListAppRequest{ShowExamples: true}, idProvider, idx, cfg)
+		res, err := ListApps(t.Context(), dockerCli, ListAppRequest{ShowExamples: true}, idProvider, idx, cfg, unoQPlatform)
 		require.NoError(t, err)
 		for _, a := range res.Apps {
 			assert.NotEqual(t, incompatibleExID, a.ID, "incompatible example should be filtered out")
@@ -459,14 +461,14 @@ bricks:
 	})
 
 	t.Run("user app with incompatible brick is still listed", func(t *testing.T) {
-		res, err := ListApps(t.Context(), dockerCli, ListAppRequest{ShowApps: true}, idProvider, idx, cfg)
+		res, err := ListApps(t.Context(), dockerCli, ListAppRequest{ShowApps: true}, idProvider, idx, cfg, unoQPlatform)
 		require.NoError(t, err)
 		require.Len(t, res.Apps, 1)
 		assert.Equal(t, userAppID, res.Apps[0].ID)
 	})
 
 	t.Run("nil bricks index disables filtering", func(t *testing.T) {
-		res, err := ListApps(t.Context(), dockerCli, ListAppRequest{ShowExamples: true}, idProvider, nil, cfg)
+		res, err := ListApps(t.Context(), dockerCli, ListAppRequest{ShowExamples: true}, idProvider, nil, cfg, unoQPlatform)
 		require.NoError(t, err)
 		assert.Len(t, res.Apps, 2)
 	})
@@ -474,7 +476,7 @@ bricks:
 
 func TestListAppsLocalBricksCompatibility(t *testing.T) {
 	cfg := setTestOrchestratorConfig(t)
-	idProvider := app.NewAppIDProvider(cfg)
+	idProvider := app.NewAppIDProvider(cfg, unoQPlatform)
 
 	docker, err := dockerClient.NewClientWithOpts(
 		dockerClient.FromEnv,
@@ -510,7 +512,7 @@ func TestListAppsLocalBricksCompatibility(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("example with only local bricks is listed even when index is empty", func(t *testing.T) {
-		res, err := ListApps(t.Context(), dockerCli, ListAppRequest{ShowExamples: true}, idProvider, idx, cfg)
+		res, err := ListApps(t.Context(), dockerCli, ListAppRequest{ShowExamples: true}, idProvider, idx, cfg, unoQPlatform)
 		require.NoError(t, err)
 		require.Len(t, res.Apps, 1)
 		assert.Equal(t, exampleID, res.Apps[0].ID)
@@ -546,7 +548,7 @@ func createApp(
 	require.NoError(t, err)
 	require.Empty(t, gCmp.Diff(f.Must(idProvider.ParseID("user:"+name)), res.ID))
 	if isExample {
-		newPath := cfg.ExamplesDir().Join(name)
+		newPath := cfg.ExamplesDirs(platform.Platform{})[0].Join(name)
 		err = os.Rename(res.ID.ToPath().String(), newPath.String())
 		require.NoError(t, err)
 		newID, err := idProvider.IDFromPath(newPath)
@@ -560,7 +562,7 @@ func createApp(
 
 func TestGetAppEnvironmentVariablesWithDefaults(t *testing.T) {
 	cfg := setTestOrchestratorConfig(t)
-	idProvider := app.NewAppIDProvider(cfg)
+	idProvider := app.NewAppIDProvider(cfg, unoQPlatform)
 
 	docker, err := dockerClient.NewClientWithOpts(
 		dockerClient.FromEnv,
@@ -642,7 +644,7 @@ models:
 
 func TestGetAppEnvironmentVariablesWithCustomModelOverrides(t *testing.T) {
 	cfg := setTestOrchestratorConfig(t)
-	idProvider := app.NewAppIDProvider(cfg)
+	idProvider := app.NewAppIDProvider(cfg, unoQPlatform)
 
 	docker, err := dockerClient.NewClientWithOpts(
 		dockerClient.FromEnv,
@@ -723,7 +725,7 @@ models:
 
 func TestGetAppEnvironmentVariablesUsingMultipleBricks(t *testing.T) {
 	cfg := setTestOrchestratorConfig(t)
-	idProvider := app.NewAppIDProvider(cfg)
+	idProvider := app.NewAppIDProvider(cfg, unoQPlatform)
 
 	docker, err := dockerClient.NewClientWithOpts(
 		dockerClient.FromEnv,

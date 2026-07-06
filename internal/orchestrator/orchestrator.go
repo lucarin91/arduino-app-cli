@@ -476,6 +476,7 @@ func ListApps(
 	idProvider *app.IDProvider,
 	bricksIndex *bricksindex.BricksIndex,
 	cfg config.Configuration,
+	platform platform.Platform,
 ) (ListAppResult, error) {
 	// Get the default app to mark it in the list
 	defaultApp, err := GetDefaultApp(cfg)
@@ -493,7 +494,7 @@ func ListApps(
 	var pathsToExplore paths.PathList
 	var appPaths paths.PathList
 	if req.ShowExamples || req.ShowOnlyDefault {
-		pathsToExplore.Add(cfg.ExamplesDir())
+		pathsToExplore.AddAll(cfg.ExamplesDirs(platform))
 	}
 	if req.ShowApps || req.ShowOnlyDefault {
 		pathsToExplore.Add(cfg.AppsDir())
@@ -504,14 +505,13 @@ func ListApps(
 			}
 		}
 	}
-	for _, p := range pathsToExplore {
-		res, err := app.FindAppsInFolder(p)
-		if err != nil {
-			slog.Error("unable to list apps", slog.String("error", err.Error()))
-			return ListAppResult{}, err
-		}
-		appPaths.AddAllMissing(res)
+
+	appPathsTmp, err := app.FindAppsInFolders(pathsToExplore)
+	if err != nil {
+		slog.Error("unable to list apps", slog.String("error", err.Error()))
+		return ListAppResult{}, err
 	}
+	appPaths.AddAllMissing(appPathsTmp)
 
 	// Compose the result
 	result := ListAppResult{Apps: []AppInfo{}, BrokenApps: []BrokenAppInfo{}}
@@ -1224,9 +1224,10 @@ type ConfigDirectories struct {
 func GetOrchestratorConfig(cfg config.Configuration) ConfigResponse {
 	return ConfigResponse{
 		Directories: ConfigDirectories{
-			Data:     cfg.DataDir().String(),
-			Apps:     cfg.AppsDir().String(),
-			Examples: cfg.ExamplesDir().String(),
+			Data: cfg.DataDir().String(),
+			Apps: cfg.AppsDir().String(),
+			// FIXME: ExamplesDir() is not the right directory, we should return the examples by board directory.
+			// Examples: cfg.ExamplesDir().String(),
 		},
 		PythonRunner: cfg.RunnerVersion,
 	}

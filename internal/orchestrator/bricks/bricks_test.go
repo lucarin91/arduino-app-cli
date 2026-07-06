@@ -21,6 +21,8 @@ import (
 	"github.com/arduino/arduino-app-cli/internal/platform"
 )
 
+var unoQPlatform = platform.Platform{BoardName: "unoq"}
+
 func TestBrickCreate(t *testing.T) {
 	bricksIndex, err := bricksindex.Load(platform.GetPlatform(nil), paths.New("testdata"))
 	require.Nil(t, err)
@@ -238,7 +240,7 @@ func TestUpdateBrick(t *testing.T) {
 		require.Nil(t, paths.New("testdata/dummy-app-for-model").CopyDirTo(tempDummyApp))
 		bricksIndex, err := bricksindex.Load(platform.GetPlatform(nil), paths.New("testdata"))
 		require.NoError(t, err)
-		modelsIndex, err := modelsindex.Load(platform.GetPlatform(nil), paths.New("testdata"), paths.New("not_exixsting_path"), paths.New("not_exixsting_path"), nil, config.Configuration{})
+		modelsIndex, err := modelsindex.Load(unoQPlatform, paths.New("testdata"), paths.New("not_exixsting_path"), paths.New("not_exixsting_path"), nil, config.Configuration{})
 		require.NoError(t, err)
 		brickService := NewService(modelsIndex, bricksIndex)
 
@@ -432,10 +434,10 @@ bricks:
 		bricksIndex: bIndex,
 		modelsIndex: mIndex,
 	}
-	idProvider := app.NewAppIDProvider(cfg)
+	idProvider := app.NewAppIDProvider(cfg, unoQPlatform)
 
 	t.Run("Brick Not Found", func(t *testing.T) {
-		res, err := svc.BricksDetails("arduino:non_existing", idProvider, cfg)
+		res, err := svc.BricksDetails("arduino:non_existing", idProvider, cfg, unoQPlatform)
 		require.Error(t, err)
 		require.Equal(t, ErrBrickNotFound, err)
 		require.Empty(t, res.ID)
@@ -457,7 +459,7 @@ bricks:
 			},
 		}
 
-		res, err := svc.BricksDetails("arduino:object_detection", idProvider, cfg)
+		res, err := svc.BricksDetails("arduino:object_detection", idProvider, cfg, unoQPlatform)
 		require.NoError(t, err)
 
 		require.Equal(t, "arduino:object_detection", res.ID)
@@ -485,7 +487,7 @@ bricks:
 	})
 
 	t.Run("Success - Full Details - no models", func(t *testing.T) {
-		res, err := svc.BricksDetails("arduino:weather_forecast", idProvider, cfg)
+		res, err := svc.BricksDetails("arduino:weather_forecast", idProvider, cfg, unoQPlatform)
 		require.NoError(t, err)
 
 		require.Equal(t, "arduino:weather_forecast", res.ID)
@@ -505,7 +507,7 @@ bricks:
 	})
 
 	t.Run("Success - Full Details - one model", func(t *testing.T) {
-		res, err := svc.BricksDetails("arduino:one_model_brick", idProvider, cfg)
+		res, err := svc.BricksDetails("arduino:one_model_brick", idProvider, cfg, unoQPlatform)
 		require.NoError(t, err)
 
 		require.Equal(t, "arduino:one_model_brick", res.ID)

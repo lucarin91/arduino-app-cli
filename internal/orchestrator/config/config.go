@@ -17,6 +17,8 @@ import (
 
 	"github.com/arduino/go-paths-helper"
 	semver "go.bug.st/relaxed-semver"
+
+	"github.com/arduino/arduino-app-cli/internal/platform"
 )
 
 // runnerVersion do not edit, this is generate with `task generate:assets`
@@ -155,7 +157,7 @@ func (c *Configuration) init() error {
 	if err := c.AppsDir().MkdirAll(); err != nil {
 		return err
 	}
-	if err := c.ExamplesDir().MkdirAll(); err != nil {
+	if err := c.examplesDir().Join("common").MkdirAll(); err != nil {
 		return err
 	}
 	if err := c.AssetsDir().MkdirAll(); err != nil {
@@ -175,8 +177,16 @@ func (c *Configuration) DataDir() *paths.Path {
 	return c.dataDir
 }
 
-func (c *Configuration) ExamplesDir() *paths.Path {
+func (c *Configuration) examplesDir() *paths.Path {
 	return c.dataDir.Join("examples")
+}
+
+func (c *Configuration) ExamplesDirs(platform platform.Platform) paths.PathList {
+	boardExampleDir := c.examplesDir().Join(fmt.Sprintf("platform_%s", platform.BoardName))
+	if boardExampleDir.Exist() {
+		return paths.PathList{boardExampleDir, c.examplesDir().Join("common")}
+	}
+	return paths.PathList{c.examplesDir().Join("common")}
 }
 
 // RequiredRuntimesPaths returns the discovered host paths for configured required

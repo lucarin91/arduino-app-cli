@@ -174,7 +174,7 @@ func getInstanceBrickConfigVariableDetails(
 }
 
 func (s *Service) BricksDetails(id string, idProvider *app.IDProvider,
-	cfg config.Configuration) (BrickDetailsResult, error) {
+	cfg config.Configuration, platform platform.Platform) (BrickDetailsResult, error) {
 	brick, found := s.bricksIndex.FindBrickByID(id)
 	if !found {
 		return BrickDetailsResult{}, ErrBrickNotFound
@@ -202,7 +202,7 @@ func (s *Service) BricksDetails(id string, idProvider *app.IDProvider,
 		}
 	})
 
-	usedByApps, err := getUsedByApps(cfg, brick.ID, idProvider)
+	usedByApps, err := getUsedByApps(cfg, brick.ID, idProvider, platform)
 	if err != nil {
 		slog.Warn("unable to get used by apps for brick", "brickID", brick.ID, "error", err.Error())
 	}
@@ -259,19 +259,14 @@ func getBrickConfigVariableDetails(
 	return variablesMap, variableDetails
 }
 
-func getUsedByApps(cfg config.Configuration, brickId string, idProvider *app.IDProvider) ([]AppReference, error) {
-	var appPaths paths.PathList
-
+func getUsedByApps(cfg config.Configuration, brickId string, idProvider *app.IDProvider, platform platform.Platform) ([]AppReference, error) {
 	pathsToExplore := paths.NewPathList()
-	pathsToExplore.Add(cfg.ExamplesDir())
+	pathsToExplore.AddAll(cfg.ExamplesDirs(platform))
 	pathsToExplore.Add(cfg.AppsDir())
-	for _, p := range pathsToExplore {
-		res, err := app.FindAppsInFolder(p)
-		if err != nil {
-			slog.Error("unable to list apps", slog.String("error", err.Error()))
-			return []AppReference{}, err
-		}
-		appPaths.AddAllMissing(res)
+	appPaths, err := app.FindAppsInFolders(pathsToExplore)
+	if err != nil {
+		slog.Error("unable to list apps", slog.String("error", err.Error()))
+		return []AppReference{}, err
 	}
 
 	usedByApps := []AppReference{}

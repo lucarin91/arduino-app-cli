@@ -13,6 +13,7 @@ import (
 	"github.com/arduino/go-paths-helper"
 
 	"github.com/arduino/arduino-app-cli/internal/orchestrator/config"
+	"github.com/arduino/arduino-app-cli/internal/platform"
 )
 
 var ErrInvalidID = errors.New("not a valid id")
@@ -54,11 +55,12 @@ func (id ID) Equal(other ID) bool {
 }
 
 type IDProvider struct {
-	cfg config.Configuration
+	cfg  config.Configuration
+	plat platform.Platform
 }
 
-func NewAppIDProvider(cfg config.Configuration) *IDProvider {
-	return &IDProvider{cfg: cfg}
+func NewAppIDProvider(cfg config.Configuration, plat platform.Platform) *IDProvider {
+	return &IDProvider{cfg: cfg, plat: plat}
 }
 
 func (p *IDProvider) IDFromBase64(id string) (ID, error) {
@@ -83,23 +85,29 @@ func (p *IDProvider) IDFromPath(path *paths.Path) (ID, error) {
 		isFromKnownLocation bool
 		isExample           bool
 	)
-	switch {
-	case strings.HasPrefix(path.String(), p.cfg.AppsDir().String()):
+	if strings.HasPrefix(path.String(), p.cfg.AppsDir().String()) {
 		rel, err := path.RelFrom(p.cfg.AppsDir())
 		if err != nil {
 			return ID{}, ErrInvalidID
 		}
 		id = "user:" + rel.String()
 		isFromKnownLocation = true
-	case strings.HasPrefix(path.String(), p.cfg.ExamplesDir().String()):
-		rel, err := path.RelFrom(p.cfg.ExamplesDir())
-		if err != nil {
-			return ID{}, ErrInvalidID
+	} else {
+		for _, example := range p.cfg.ExamplesDirs(p.plat) {
+			if strings.HasPrefix(path.String(), example.String()) {
+				rel, err := path.RelFrom(example)
+				if err != nil {
+					return ID{}, ErrInvalidID
+				}
+				id = "examples:" + rel.String()
+				isFromKnownLocation = true
+				isExample = true
+				break
+			}
 		}
-		id = "examples:" + rel.String()
-		isFromKnownLocation = true
-		isExample = true
-	default:
+	}
+
+	if id == "" {
 		id = path.String()
 	}
 
@@ -127,11 +135,18 @@ func (p *IDProvider) parseID(id string) (ID, error) {
 		case "user":
 			path = p.cfg.AppsDir().Join(appPath)
 		case "examples":
-			path = p.cfg.ExamplesDir().Join(appPath)
 			isExample = true
+			// Falls back to the last dir if none contains the example.
+			for _, examplePath := range p.cfg.ExamplesDirs(p.plat) {
+				path = examplePath.Join(appPath)
+				if path.Exist() {
+					break
+				}
+			}
 		default:
 			return ID{}, ErrInvalidID
 		}
+
 		return ID{
 			path:                 path,
 			encodedID:            base64.RawURLEncoding.EncodeToString([]byte(id)),

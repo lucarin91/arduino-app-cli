@@ -14,7 +14,10 @@ import (
 	"go.bug.st/f"
 
 	"github.com/arduino/arduino-app-cli/internal/orchestrator/config"
+	"github.com/arduino/arduino-app-cli/internal/platform"
 )
+
+var unoQPlatform = platform.Platform{BoardName: "unoq"}
 
 func TestNewIDFromPath(t *testing.T) {
 	tmp := paths.New(t.TempDir())
@@ -23,11 +26,18 @@ func TestNewIDFromPath(t *testing.T) {
 
 	orchestratorConfig, err := config.NewFromEnv()
 	require.NoError(t, err)
+	examplesBoardDir := orchestratorConfig.DataDir().Join("examples", "platform_unoq")
+	examplesCommonDir := orchestratorConfig.DataDir().Join("examples", "common")
 	require.NoError(t, orchestratorConfig.AppsDir().Join("user-app").MkdirAll())
-	require.NoError(t, orchestratorConfig.ExamplesDir().Join("example-app").MkdirAll())
+	require.NoError(t, examplesCommonDir.Join("example-app").MkdirAll())
+	require.NoError(t, examplesBoardDir.Join("special-example-app").MkdirAll())
+	require.NoError(t, examplesCommonDir.Join("duplicated-example-app").MkdirAll())
+	require.NoError(t, examplesBoardDir.Join("duplicated-example-app").MkdirAll())
+	require.NoError(t, examplesCommonDir.Join("nested", "deep", "example-app").MkdirAll())
+	require.NoError(t, examplesBoardDir.Join("nested", "platform-example").MkdirAll())
 	require.NoError(t, tmp.Join("other-app").MkdirAll())
 
-	idProvider := NewAppIDProvider(orchestratorConfig)
+	idProvider := NewAppIDProvider(orchestratorConfig, unoQPlatform)
 
 	tests := []struct {
 		name    string
@@ -42,9 +52,30 @@ func TestNewIDFromPath(t *testing.T) {
 		},
 		{
 			name: "valid example id",
-			in:   orchestratorConfig.ExamplesDir().Join("example-app"),
+			in:   examplesCommonDir.Join("example-app"),
 			want: f.Must(idProvider.ParseID("examples:example-app")),
 		},
+		{
+			name: "duplicated example id, the platform specific wins",
+			in:   examplesBoardDir.Join("duplicated-example-app"),
+			want: f.Must(idProvider.ParseID("examples:duplicated-example-app")),
+		},
+		{
+			name: "platform specific valid example id",
+			in:   examplesBoardDir.Join("special-example-app"),
+			want: f.Must(idProvider.ParseID("examples:special-example-app")),
+		},
+		{
+			name: "nested common example id",
+			in:   examplesCommonDir.Join("nested", "deep", "example-app"),
+			want: f.Must(idProvider.ParseID("examples:nested/deep/example-app")),
+		},
+		{
+			name: "nested platform example id",
+			in:   examplesBoardDir.Join("nested", "platform-example"),
+			want: f.Must(idProvider.ParseID("examples:nested/platform-example")),
+		},
+
 		{
 			name: "valid absolute path",
 			in:   tmp.Join("other-app"),
@@ -73,46 +104,58 @@ func TestParseID(t *testing.T) {
 	orchestratorConfig, err := config.NewFromEnv()
 	require.NoError(t, err)
 	require.NoError(t, tmp.Join("other-app").MkdirAll())
+	examplesBoardDir := orchestratorConfig.DataDir().Join("examples", "platform_unoq")
+	examplesCommonDir := orchestratorConfig.DataDir().Join("examples", "common")
+	require.NoError(t, examplesCommonDir.Join("example-app").MkdirAll())
+	require.NoError(t, examplesCommonDir.Join("nested", "deep", "example-app").MkdirAll())
+	require.NoError(t, examplesBoardDir.Join("nested", "platform-example").MkdirAll())
 
-	idProvider := NewAppIDProvider(orchestratorConfig)
+	idProvider := NewAppIDProvider(orchestratorConfig, unoQPlatform)
 
 	tests := []struct {
-		name    string
-		in      string
-		want    ID
-		wantErr bool
+		name     string
+		in       string
+		wantPath *paths.Path
+		wantErr  bool
 	}{
 		{
-			name: "valid user id",
-			in:   "user:user-app",
-			want: f.Must(idProvider.ParseID("user:user-app")),
+			name:     "valid user id",
+			in:       "user:user-app",
+			wantPath: orchestratorConfig.AppsDir().Join("user-app"),
 		},
 		{
-			name: "valid example id",
-			in:   "examples:example-app",
-			want: f.Must(idProvider.ParseID("examples:example-app")),
+			name:     "valid example id",
+			in:       "examples:example-app",
+			wantPath: examplesCommonDir.Join("example-app"),
 		},
 		{
-			name: "absolute path to app",
-			in:   tmp.Join("other-app").String(),
-			want: f.Must(idProvider.IDFromPath(tmp.Join("other-app"))),
+			name:     "nested common example id",
+			in:       "examples:nested/deep/example-app",
+			wantPath: examplesCommonDir.Join("nested", "deep", "example-app"),
+		},
+		{
+			name:     "nested platform example id wins over common",
+			in:       "examples:nested/platform-example",
+			wantPath: examplesBoardDir.Join("nested", "platform-example"),
+		},
+		{
+			name:     "absolute path to app",
+			in:       tmp.Join("other-app").String(),
+			wantPath: tmp.Join("other-app"),
 		},
 		{
 			name:    "invalid id",
 			in:      "invalid-id",
-			want:    ID{},
 			wantErr: true,
 		},
 		{
 			name:    "empty id",
 			in:      "",
-			want:    ID{},
 			wantErr: true,
 		},
 		{
 			name:    "not existing path",
 			in:      "/non/existing/path",
-			want:    ID{},
 			wantErr: true,
 		},
 	}
@@ -122,10 +165,10 @@ func TestParseID(t *testing.T) {
 			got, err := idProvider.ParseID(tt.in)
 			if tt.wantErr {
 				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				assert.Equal(t, tt.want, got)
+				return
 			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantPath.String(), got.ToPath().String())
 		})
 	}
 }

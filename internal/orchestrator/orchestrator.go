@@ -104,6 +104,10 @@ func StartApp(
 	verbose bool,
 	cb func(StreamMessage),
 ) error {
+	if cb == nil {
+		cb = func(StreamMessage) {}
+	}
+
 	bricksIndex = bricksIndex.WithAppBricks(appToStart.LocalBricks)
 
 	if err := checkBricks(appToStart.Descriptor, bricksIndex, modelsIndex); err != nil {
@@ -119,13 +123,38 @@ func StartApp(
 		return err
 	}
 
-	if running, err := getRunningApp(ctx, docker.Client()); err != nil {
-		return err
-	} else if running != nil {
-		return fmt.Errorf("app %q is running", running.Name)
-	} else {
-		cb(StreamMessage{data: fmt.Sprintf("Starting app %q", appToStart.Name)})
+	appsStatus, err := getAppsStatus(ctx, docker.Client())
+	if err != nil {
+		return fmt.Errorf("failed to list apps status: %w", err)
 	}
+
+	// Reject if another app is running/starting; otherwise stop any *other*
+	// failed app so its sibling services release resources (ports, volumes)
+	// that could conflict with the app we're starting.
+	for _, s := range appsStatus {
+		switch s.Status {
+		case StatusRunning, StatusStarting:
+			runningApp, err := app.Load(s.AppPath)
+			if err != nil {
+				return fmt.Errorf("failed to load running app: %w", err)
+			}
+			return fmt.Errorf("app %q is running", runningApp.Name)
+		case StatusFailed:
+			if s.AppPath.EqualsTo(appToStart.FullPath) {
+				continue
+			}
+			failedApp, err := app.Load(s.AppPath)
+			if err != nil {
+				slog.Warn("skipping failed app: cannot load", slog.String("path", s.AppPath.String()), slog.String("error", err.Error()))
+				continue
+			}
+			if err := StopApp(ctx, docker, platform, failedApp, nil); err != nil {
+				slog.Warn("failed to stop failed app", slog.String("name", failedApp.Name), slog.String("error", err.Error()))
+			}
+		}
+	}
+
+	cb(StreamMessage{data: fmt.Sprintf("Starting app %q", appToStart.Name)})
 
 	if err := setLedsToUserControlledMode(platform); err != nil {
 		slog.Debug("unable to set status leds", slog.String("error", err.Error()))
@@ -273,6 +302,10 @@ func getAppEnvironmentVariables(ctx context.Context, app app.ArduinoApp, brickIn
 }
 
 func stopAppWithCmd(ctx context.Context, docker command.Cli, platform platform.Platform, app app.ArduinoApp, cmd string, cb func(StreamMessage)) error {
+	if cb == nil {
+		cb = func(StreamMessage) {}
+	}
+
 	switch cmd {
 	case "stop":
 		cb(StreamMessage{data: fmt.Sprintf("Stopping app %q", app.Name)})
@@ -353,6 +386,10 @@ func StopAndDestroyApp(ctx context.Context, dockerClient command.Cli, platform p
 }
 
 func cleanAppCacheFiles(app app.ArduinoApp, cb func(StreamMessage)) error {
+	if cb == nil {
+		cb = func(StreamMessage) {}
+	}
+
 	cachePath := app.FullPath.Join(".cache")
 
 	if exists, _ := cachePath.ExistCheck(); !exists {

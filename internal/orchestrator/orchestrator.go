@@ -148,6 +148,7 @@ func StartApp(
 				slog.Warn("skipping failed app: cannot load", slog.String("path", s.AppPath.String()), slog.String("error", err.Error()))
 				continue
 			}
+			slog.Debug("stopping failed app before starting a new one", slog.String("name", failedApp.Name))
 			if err := StopApp(ctx, docker, platform, failedApp, nil); err != nil {
 				slog.Warn("failed to stop failed app", slog.String("name", failedApp.Name), slog.String("error", err.Error()))
 			}

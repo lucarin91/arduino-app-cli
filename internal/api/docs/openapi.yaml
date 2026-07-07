@@ -668,7 +668,7 @@ paths:
           content:
             text/event-stream:
               schema:
-                $ref: '#/components/schemas/ResponceLogs'
+                $ref: '#/components/schemas/ResponseLogs'
           description: OK
         "400":
           $ref: '#/components/responses/BadRequest'
@@ -1948,13 +1948,13 @@ components:
           nullable: true
           type: array
       type: object
-    ResponceLogs:
+    ResponseLogs:
       properties:
+        container_id:
+          type: string
         id:
           type: string
         message:
-          type: string
-        source:
           type: string
       type: object
     SketchAddLibraryResponse:

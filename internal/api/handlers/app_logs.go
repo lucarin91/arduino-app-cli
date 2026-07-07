@@ -6,7 +6,6 @@
 package handlers
 
 import (
-	"cmp"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -22,11 +21,11 @@ import (
 	"github.com/arduino/arduino-app-cli/internal/render"
 )
 
-type ResponceLogs struct {
-	// Source is either `python` or the name of the brick that produced the log message.
-	Source string `json:"source"`
-	// ID is the low-level docker container identifier.
+type ResponseLogs struct {
+	// ID is "main" for the app's python container or the brick ID for brick containers.
 	ID string `json:"id"`
+	// ContainerID is the underlying container/compose service reference.
+	ContainerID string `json:"container_id"`
 	// Message is the log message.
 	Message string `json:"message"`
 }
@@ -52,11 +51,11 @@ func HandleAppLogs(
 
 		queryParams := r.URL.Query()
 
-		showAppLogs, showServicesLogs := true, true
+		showAppLogs, showServicesLogs := true, false
 		if filter := queryParams.Get("filter"); filter != "" {
 			filters := strings.Split(strings.TrimSpace(filter), ",")
 			showServicesLogs = slices.Contains(filters, "bricks")
-			showAppLogs = slices.Contains(filters, "app")
+			showAppLogs = slices.Contains(filters, "main")
 		}
 
 		var tail *uint64
@@ -97,10 +96,14 @@ func HandleAppLogs(
 			return
 		}
 		for item := range messagesIter {
-			sseStream.Send(render.SSEEvent{Type: "message", Data: ResponceLogs{
-				Message: item.Content,
-				ID:      item.Name,
-				Source:  cmp.Or(item.BrickName, "python"),
+			id := item.BrickName
+			if item.Name == "main" {
+				id = "main"
+			}
+			sseStream.Send(render.SSEEvent{Type: "message", Data: ResponseLogs{
+				ID:          id,
+				ContainerID: item.Name,
+				Message:     item.Content,
 			}})
 		}
 	}

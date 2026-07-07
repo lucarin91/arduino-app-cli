@@ -118,7 +118,6 @@ type Brick struct {
 	RequiresDisplay string   `yaml:"requires_display,omitempty"`
 	// Deprecated : the field `require_container` is deprecated, you can remove it from the brick config. It will be ignored if present.
 	RequireContainer            bool                      `yaml:"require_container"` // Deprecated
-	RequireModel                bool                      `yaml:"require_model"`
 	Variables                   []BrickVariable           `yaml:"variables,omitempty"`
 	Ports                       []string                  `yaml:"ports,omitempty"`
 	ModelName                   string                    `yaml:"model_name,omitempty"`
@@ -135,6 +134,7 @@ type Brick struct {
 	ReadmeFile   *paths.Path `yaml:"-"` // README.md file path, optional
 	ExamplesPath *paths.Path `yaml:"-"` // code examples folder path, optional
 	DocsAPIPath  *paths.Path `yaml:"-"` // API docs file path, optional
+	RequireModel bool        `yaml:"-"`
 
 	containerPorts []string `yaml:"-"` // Ports extracted from the compose file, optional
 }
@@ -220,6 +220,16 @@ func (b Brick) GetModelNameByBoard(platform platform.Platform) string {
 	return defaultModelName
 }
 
+func (b Brick) isAiBrick(platform platform.Platform) bool {
+	for _, mb := range b.ModelByBoard {
+		if mb.Platform == platform.BoardName && mb.Model != "" {
+			return true
+		}
+	}
+
+	return b.ModelName != ""
+}
+
 type BrickInstance struct {
 	Model string
 }
@@ -285,6 +295,7 @@ func Load(platform platform.Platform, path *paths.Path) (*BricksIndex, error) {
 		yamlIndex.Bricks[i].ReadmeFile = path.Join("docs", namespace, brickName, "README.md")
 		yamlIndex.Bricks[i].ExamplesPath = path.Join("examples", namespace, brickName)
 		yamlIndex.Bricks[i].DocsAPIPath = path.Join("api-docs", namespace, "app_bricks", brickName, "API.md")
+		yamlIndex.Bricks[i].RequireModel = yamlIndex.Bricks[i].isAiBrick(platform)
 
 		// Load main compose file and, if present, platform-specific compose files
 		var (

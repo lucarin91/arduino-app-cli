@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -707,6 +708,44 @@ func TestAppLogs(t *testing.T) {
 		err = json.Unmarshal(body, &actualResponseBody)
 		require.NoError(t, err, "Failed to unmarshal the JSON error response body")
 		require.Equal(t, "invalid tail value", actualResponseBody.Details)
+	})
+
+	t.Run("InvalidFilterValue_Fail", func(t *testing.T) {
+		var actualResponseBody models.ErrorResponse
+		invalidFilter := "unknown"
+		resp, err := httpClient.GetAppLogs(t.Context(), appWithLogsId, &client.GetAppLogsParams{Filter: &invalidFilter})
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		err = json.Unmarshal(body, &actualResponseBody)
+		require.NoError(t, err, "Failed to unmarshal the JSON error response body")
+		require.Equal(t, "invalid filter value", actualResponseBody.Details)
+	})
+
+	t.Run("GetLogs_Success_Receives_SSE_Message", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+		defer cancel()
+		resp, err := httpClient.GetAppLogs(ctx, appWithLogsId, nil)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+
+		scanner := bufio.NewScanner(resp.Body)
+		for scanner.Scan() {
+			line := scanner.Text()
+			data, ok := strings.CutPrefix(line, "data: ")
+			if !ok {
+				continue
+			}
+			var payload handlers.ResponseLogs
+			require.NoError(t, json.Unmarshal([]byte(data), &payload))
+			require.NotEmpty(t, payload.ID, "id must be set")
+			require.NotEmpty(t, payload.Message, "message must be set")
+			return
+		}
+		t.Fatal("no message event received before timeout")
 	})
 	// find a way to test 400 invalid tail value: client generated code is type safe, so an invalid value can't be sent
 }

@@ -26,6 +26,7 @@ import (
 	"github.com/arduino/arduino-app-cli/internal/helpers"
 	"github.com/arduino/arduino-app-cli/internal/orchestrator/app"
 	"github.com/arduino/arduino-app-cli/internal/orchestrator/bricksindex"
+	"github.com/arduino/arduino-app-cli/internal/orchestrator/servicesindex"
 )
 
 type AppLogsRequest struct {
@@ -35,10 +36,18 @@ type AppLogsRequest struct {
 	Tail             *uint64
 }
 
+type LogSource string
+
+const (
+	LogSourceMain  LogSource = "main"
+	LogSourceBrick LogSource = "brick"
+)
+
 type LogMessage struct {
-	Name      string
-	BrickName string
-	Content   string
+	Source        LogSource
+	BrickID       string // empty when Source != LogSourceBrick
+	ContainerName string
+	Content       string
 }
 
 func AppLogs(
@@ -47,6 +56,7 @@ func AppLogs(
 	req AppLogsRequest,
 	dockerCli command.Cli,
 	bricksIndex *bricksindex.BricksIndex,
+	servicesIndex *servicesindex.ServicesIndex,
 ) (iter.Seq[LogMessage], error) {
 	if app.MainPythonFile == nil {
 		return helpers.EmptyIter[LogMessage](), nil
@@ -59,30 +69,51 @@ func AppLogs(
 
 	bricksIndex = bricksIndex.WithAppBricks(app.LocalBricks)
 
-	// Obtain mapping compose service name <-> brick name
-	serviceToBrickMapping := make(map[string]string, len(app.Descriptor.Bricks))
-	for _, brick := range app.Descriptor.Bricks {
-		brick, ok := bricksIndex.FindBrickByID(brick.ID)
+	// Map compose service name -> owning brick ID (first requirer wins for shared services).
+	serviceToBrickMapping := make(map[string]string)
+	for _, appBrick := range app.Descriptor.Bricks {
+		idxBrick, ok := bricksIndex.FindBrickByID(appBrick.ID)
 		if !ok {
-			slog.Warn("brick not valid", slog.String("brick_id", brick.ID))
-			continue
-		}
-		composeFilePath, found := brick.GetComposeFile()
-		if !found {
-			slog.Warn("brick compose id not valid", slog.String("brick_id", brick.ID))
-			continue
-		}
-		if !composeFilePath.Exist() {
-			slog.Debug("Brick compose file not found", slog.String("module", brick.ID), slog.String("path", composeFilePath.String()))
+			slog.Warn("brick not valid", slog.String("brick_id", appBrick.ID))
 			continue
 		}
 
-		services, err := extractServicesFromComposeFile(composeFilePath)
-		if err != nil {
-			return helpers.EmptyIter[LogMessage](), err
+		if composeFilePath, found := idxBrick.GetComposeFile(); found && composeFilePath.Exist() {
+			services, err := extractServicesFromComposeFile(composeFilePath)
+			if err != nil {
+				return helpers.EmptyIter[LogMessage](), err
+			}
+			for _, s := range services {
+				if _, exists := serviceToBrickMapping[s.name]; !exists {
+					serviceToBrickMapping[s.name] = idxBrick.ID
+				}
+			}
 		}
-		for _, s := range services {
-			serviceToBrickMapping[s.name] = brick.ID
+
+		requiredServices, err := idxBrick.GetMatchingService(bricksindex.BrickInstance{Model: appBrick.Model})
+		if err != nil {
+			slog.Warn("failed to get required services for brick", slog.String("brick_id", idxBrick.ID), slog.Any("error", err))
+			continue
+		}
+		for _, serviceID := range requiredServices {
+			service, found := servicesIndex.FindServiceByID(serviceID)
+			if !found {
+				continue
+			}
+			serviceCompose, ok := service.GetComposeFile()
+			if !ok {
+				continue
+			}
+			services, err := extractServicesFromComposeFile(serviceCompose)
+			if err != nil {
+				slog.Warn("failed to load service compose", slog.String("service_id", serviceID), slog.Any("error", err))
+				continue
+			}
+			for _, s := range services {
+				if _, exists := serviceToBrickMapping[s.name]; !exists {
+					serviceToBrickMapping[s.name] = idxBrick.ID
+				}
+			}
 		}
 	}
 
@@ -120,7 +151,7 @@ func AppLogs(
 		err = backend.Logs(
 			ctx,
 			prj.Name,
-			NewDockerLogConsumer(ctx, yield, serviceToBrickMapping),
+			NewDockerLogConsumer(ctx, yield, prj.Name, serviceToBrickMapping),
 			opts,
 		)
 		if err != nil {
@@ -135,6 +166,7 @@ var _ api.LogConsumer = (*DockerLogConsumer)(nil)
 type DockerLogConsumer struct {
 	ctx          context.Context
 	cb           func(LogMessage) bool
+	projectName  string
 	mapping      map[string]string
 	shuttingDown atomic.Bool
 	mu           sync.Mutex
@@ -143,12 +175,14 @@ type DockerLogConsumer struct {
 func NewDockerLogConsumer(
 	ctx context.Context,
 	cb func(LogMessage) bool,
+	projectName string,
 	mapping map[string]string,
 ) *DockerLogConsumer {
 	return &DockerLogConsumer{
-		ctx:     ctx,
-		cb:      cb,
-		mapping: mapping,
+		ctx:         ctx,
+		cb:          cb,
+		projectName: projectName,
+		mapping:     mapping,
 	}
 }
 
@@ -177,18 +211,21 @@ func (d *DockerLogConsumer) write(container, message string) {
 		return
 	}
 
-	serviceName := strings.TrimSpace(container)
-	idx := strings.LastIndex(serviceName, "-")
-	if idx != -1 {
-		// remove the suffix -1 or -2 or -4
-		serviceName = serviceName[:idx]
+	containerName := strings.TrimSpace(container)
+	if idx := strings.LastIndex(containerName, "-"); idx != -1 {
+		// remove the replica suffix (e.g. "-1", "-2")
+		containerName = containerName[:idx]
+	}
+	containerName = strings.TrimPrefix(containerName, d.projectName+"-")
+
+	msg := LogMessage{Source: LogSourceMain, ContainerName: containerName}
+	if brickID, ok := d.mapping[containerName]; ok {
+		msg.Source = LogSourceBrick
+		msg.BrickID = brickID
 	}
 	for line := range strings.SplitSeq(message, "\n") {
-		if !d.cb(LogMessage{
-			Name:      serviceName,
-			BrickName: d.mapping[serviceName],
-			Content:   line,
-		}) {
+		msg.Content = line
+		if !d.cb(msg) {
 			d.shuttingDown.CompareAndSwap(false, true)
 			return
 		}

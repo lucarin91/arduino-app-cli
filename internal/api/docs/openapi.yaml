@@ -640,7 +640,7 @@ paths:
       - Application
   /v1/apps/{id}/logs:
     get:
-      description: Obtain a ServerSentEvnt stream of logs. It is possible to apply
+      description: Obtain a ServerSentEvent stream of logs. It is possible to apply
         different filters.
       operationId: getAppLogs
       parameters:
@@ -1950,7 +1950,7 @@ components:
       type: object
     ResponseLogs:
       properties:
-        container_id:
+        container_name:
           type: string
         id:
           type: string

@@ -686,7 +686,7 @@ Contains a JSON object with the details of an error.
 				ContentType:   "text/event-stream",
 				DataStructure: handlers.ResponseLogs{},
 			},
-			Description: "Obtain a ServerSentEvnt stream of logs. It is possible to apply different filters.",
+			Description: "Obtain a ServerSentEvent stream of logs. It is possible to apply different filters.",
 			Summary:     "Get the logs of a running app",
 			Tags:        []Tag{ApplicationTag},
 			PossibleErrors: []ErrorResponse{

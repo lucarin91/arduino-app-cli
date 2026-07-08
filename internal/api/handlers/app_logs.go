@@ -18,22 +18,21 @@ import (
 	"github.com/arduino/arduino-app-cli/internal/orchestrator"
 	"github.com/arduino/arduino-app-cli/internal/orchestrator/app"
 	"github.com/arduino/arduino-app-cli/internal/orchestrator/bricksindex"
+	"github.com/arduino/arduino-app-cli/internal/orchestrator/servicesindex"
 	"github.com/arduino/arduino-app-cli/internal/render"
 )
 
 type ResponseLogs struct {
-	// ID is "main" for the app's python container or the brick ID for brick containers.
-	ID string `json:"id"`
-	// ContainerID is the underlying container/compose service reference.
-	ContainerID string `json:"container_id"`
-	// Message is the log message.
-	Message string `json:"message"`
+	ID            string `json:"id"`
+	ContainerName string `json:"container_name"`
+	Message       string `json:"message"`
 }
 
 func HandleAppLogs(
 	dockerClient command.Cli,
 	idProvider *app.IDProvider,
 	bricksIndex *bricksindex.BricksIndex,
+	servicesIndex *servicesindex.ServicesIndex,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := idProvider.IDFromBase64(r.PathValue("appID"))
@@ -56,6 +55,10 @@ func HandleAppLogs(
 			filters := strings.Split(strings.TrimSpace(filter), ",")
 			showServicesLogs = slices.Contains(filters, "bricks")
 			showAppLogs = slices.Contains(filters, "main")
+			if !showAppLogs && !showServicesLogs {
+				render.EncodeResponse(w, http.StatusBadRequest, models.ErrorResponse{Details: "invalid filter value"})
+				return
+			}
 		}
 
 		var tail *uint64
@@ -87,7 +90,7 @@ func HandleAppLogs(
 		}
 		defer sseStream.Close()
 
-		messagesIter, err := orchestrator.AppLogs(r.Context(), app, appLogsRequest, dockerClient, bricksIndex)
+		messagesIter, err := orchestrator.AppLogs(r.Context(), app, appLogsRequest, dockerClient, bricksIndex, servicesIndex)
 		if err != nil {
 			sseStream.SendError(render.SSEErrorData{
 				Code:    render.InternalServiceErr,
@@ -96,15 +99,22 @@ func HandleAppLogs(
 			return
 		}
 		for item := range messagesIter {
-			id := item.BrickName
-			if item.Name == "main" {
-				id = "main"
+			switch item.Source {
+			case orchestrator.LogSourceMain:
+				sseStream.Send(render.SSEEvent{Type: "message", Data: ResponseLogs{
+					ID:            "main",
+					ContainerName: item.ContainerName,
+					Message:       item.Content,
+				}})
+			case orchestrator.LogSourceBrick:
+				sseStream.Send(render.SSEEvent{Type: "message", Data: ResponseLogs{
+					ID:            item.BrickID,
+					ContainerName: item.ContainerName,
+					Message:       item.Content,
+				}})
+			default:
+				slog.Warn("Unknown log source", slog.String("source", string(item.Source)))
 			}
-			sseStream.Send(render.SSEEvent{Type: "message", Data: ResponseLogs{
-				ID:          id,
-				ContainerID: item.Name,
-				Message:     item.Content,
-			}})
 		}
 	}
 }

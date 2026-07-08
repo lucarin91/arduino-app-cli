@@ -69,30 +69,36 @@ func AppLogs(
 
 	bricksIndex = bricksIndex.WithAppBricks(app.LocalBricks)
 
-	// Map compose service name -> owning brick ID (first requirer wins for shared services).
-	serviceToBrickMapping := make(map[string]string)
+	// Obtain mapping compose service name <-> brick name
+	serviceToBrickMapping := make(map[string]string, len(app.Descriptor.Bricks))
 	for _, appBrick := range app.Descriptor.Bricks {
-		idxBrick, ok := bricksIndex.FindBrickByID(appBrick.ID)
+		brick, ok := bricksIndex.FindBrickByID(appBrick.ID)
 		if !ok {
 			slog.Warn("brick not valid", slog.String("brick_id", appBrick.ID))
 			continue
 		}
-
-		if composeFilePath, found := idxBrick.GetComposeFile(); found && composeFilePath.Exist() {
-			services, err := extractServicesFromComposeFile(composeFilePath)
-			if err != nil {
-				return helpers.EmptyIter[LogMessage](), err
-			}
-			for _, s := range services {
-				if _, exists := serviceToBrickMapping[s.name]; !exists {
-					serviceToBrickMapping[s.name] = idxBrick.ID
-				}
-			}
+		composeFilePath, found := brick.GetComposeFile()
+		if !found {
+			slog.Warn("brick compose id not valid", slog.String("brick_id", brick.ID))
+			continue
+		}
+		if !composeFilePath.Exist() {
+			slog.Debug("Brick compose file not found", slog.String("module", brick.ID), slog.String("path", composeFilePath.String()))
+			continue
 		}
 
-		requiredServices, err := idxBrick.GetMatchingService(bricksindex.BrickInstance{Model: appBrick.Model})
+		services, err := extractServicesFromComposeFile(composeFilePath)
 		if err != nil {
-			slog.Warn("failed to get required services for brick", slog.String("brick_id", idxBrick.ID), slog.Any("error", err))
+			return helpers.EmptyIter[LogMessage](), err
+		}
+		for _, s := range services {
+			serviceToBrickMapping[s.name] = brick.ID
+		}
+
+		// Also attribute containers of Arduino Services required by this brick.
+		requiredServices, err := brick.GetMatchingService(bricksindex.BrickInstance{Model: appBrick.Model})
+		if err != nil {
+			slog.Warn("failed to get required services for brick", slog.String("brick_id", brick.ID), slog.Any("error", err))
 			continue
 		}
 		for _, serviceID := range requiredServices {
@@ -111,7 +117,7 @@ func AppLogs(
 			}
 			for _, s := range services {
 				if _, exists := serviceToBrickMapping[s.name]; !exists {
-					serviceToBrickMapping[s.name] = idxBrick.ID
+					serviceToBrickMapping[s.name] = brick.ID
 				}
 			}
 		}
@@ -208,14 +214,15 @@ func (d *DockerLogConsumer) write(container, message string) {
 		return
 	}
 
-	containerName := strings.TrimSpace(container)
-	if idx := strings.LastIndex(containerName, "-"); idx != -1 {
-		// remove the replica suffix (e.g. "-1", "-2")
-		containerName = containerName[:idx]
+	serviceName := strings.TrimSpace(container)
+	idx := strings.LastIndex(serviceName, "-")
+	if idx != -1 {
+		// remove the suffix -1 or -2 or -4
+		serviceName = serviceName[:idx]
 	}
 
-	msg := LogMessage{Source: LogSourceMain, ContainerName: containerName}
-	if brickID, ok := d.mapping[containerName]; ok {
+	msg := LogMessage{Source: LogSourceMain, ContainerName: serviceName}
+	if brickID, ok := d.mapping[serviceName]; ok {
 		msg.Source = LogSourceBrick
 		msg.BrickID = brickID
 	}

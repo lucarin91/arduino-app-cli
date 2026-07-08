@@ -151,7 +151,7 @@ func AppLogs(
 		err = backend.Logs(
 			ctx,
 			prj.Name,
-			NewDockerLogConsumer(ctx, yield, prj.Name, serviceToBrickMapping),
+			NewDockerLogConsumer(ctx, yield, serviceToBrickMapping),
 			opts,
 		)
 		if err != nil {
@@ -166,7 +166,6 @@ var _ api.LogConsumer = (*DockerLogConsumer)(nil)
 type DockerLogConsumer struct {
 	ctx          context.Context
 	cb           func(LogMessage) bool
-	projectName  string
 	mapping      map[string]string
 	shuttingDown atomic.Bool
 	mu           sync.Mutex
@@ -175,14 +174,12 @@ type DockerLogConsumer struct {
 func NewDockerLogConsumer(
 	ctx context.Context,
 	cb func(LogMessage) bool,
-	projectName string,
 	mapping map[string]string,
 ) *DockerLogConsumer {
 	return &DockerLogConsumer{
-		ctx:         ctx,
-		cb:          cb,
-		projectName: projectName,
-		mapping:     mapping,
+		ctx:     ctx,
+		cb:      cb,
+		mapping: mapping,
 	}
 }
 
@@ -216,7 +213,6 @@ func (d *DockerLogConsumer) write(container, message string) {
 		// remove the replica suffix (e.g. "-1", "-2")
 		containerName = containerName[:idx]
 	}
-	containerName = strings.TrimPrefix(containerName, d.projectName+"-")
 
 	msg := LogMessage{Source: LogSourceMain, ContainerName: containerName}
 	if brickID, ok := d.mapping[containerName]; ok {

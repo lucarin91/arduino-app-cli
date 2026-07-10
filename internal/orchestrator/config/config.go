@@ -147,24 +147,16 @@ func NewFromEnv() (Configuration, error) {
 		EdgeImpulseAPIURL:                parsedEdgeImpulseURL,
 		ArduinoPlatformVersionConstraint: constraint,
 	}
-	if err := c.init(); err != nil {
-		return Configuration{}, err
-	}
 	return c, nil
 }
 
-func (c *Configuration) init() error {
-	// Only create paths under AppsDir here. AppsDir defaults to $HOME/ArduinoApps
-	// and is naturally owned by the running user, so MkdirAll is safe.
-	//
-	// Paths under DataDir (/var/lib/arduino-app-cli/...) MUST NOT be created here:
-	// the deb postinst chowns them to arduino:arduino, and if arduino-app-cli is
-	// ever invoked as root (e.g. via sudo) with a missing subpath, MkdirAll would
-	// re-create it as root:root and break subsequent writes by the arduino user.
-	// Data-dir subpaths are the deb's responsibility (or, for tests, the test
-	// helper's).
-	return c.AppsDir().MkdirAll()
-}
+// NOTE: NewFromEnv intentionally does not MkdirAll any directory. It runs
+// before the uid check in main.go and may execute as root (e.g. via `sudo`
+// or the deb postinst's bash-completion invocation). Creating $HOME/ArduinoApps
+// or any path under /var/lib/arduino-app-cli here would set it to root:root,
+// breaking subsequent writes by the arduino user. Every writer (CloneApp,
+// CreateApp, provision's MkTempDir, ...) is responsible for MkdirAll'ing its
+// own target under the correct uid.
 
 func (c *Configuration) AppsDir() *paths.Path {
 	return c.appsDir

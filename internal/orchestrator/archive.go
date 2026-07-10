@@ -183,6 +183,9 @@ func ImportAppFromZip(
 		finalDestPath, _ = findAppPathByName(newName, cfg)
 	}
 
+	if err := finalDestPath.Parent().MkdirAll(); err != nil {
+		return app.ID{}, fmt.Errorf("unable to create apps directory: %w", err)
+	}
 	tempDestDir, err := paths.MkTempDir(finalDestPath.Parent().String(), "tmp_")
 	if err != nil {
 		return app.ID{}, fmt.Errorf("unable to create temp app directory: %w", err)

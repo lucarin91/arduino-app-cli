@@ -150,14 +150,6 @@ func NewFromEnv() (Configuration, error) {
 	return c, nil
 }
 
-// NOTE: NewFromEnv intentionally does not MkdirAll any directory. It runs
-// before the uid check in main.go and may execute as root (e.g. via `sudo`
-// or the deb postinst's bash-completion invocation). Creating $HOME/ArduinoApps
-// or any path under /var/lib/arduino-app-cli here would set it to root:root,
-// breaking subsequent writes by the arduino user. Every writer (CloneApp,
-// CreateApp, provision's MkTempDir, ...) is responsible for MkdirAll'ing its
-// own target under the correct uid.
-
 func (c *Configuration) AppsDir() *paths.Path {
 	return c.appsDir
 }

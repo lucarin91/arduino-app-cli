@@ -13,11 +13,16 @@ import (
 )
 
 // FindAppsInFolder scans the given paths recursively to find Arduino Apps and
-// returns the list of found app paths.
+// returns the list of found app paths. Paths that do not exist on disk are
+// silently skipped: a missing examples or apps directory just means no apps
+// there, not a failure.
 func FindAppsInFolders(pathsToExplore paths.PathList) (paths.PathList, error) {
 	var result paths.PathList
 	var allErrors error
 	for _, p := range pathsToExplore {
+		if p.NotExist() {
+			continue
+		}
 		apps, err := p.ReadDirRecursiveFiltered(
 			paths.AndFilter( // Recursion filter
 				paths.FilterOutNames(".cache"),       // Do not recurse into .cache folders

@@ -154,19 +154,16 @@ func NewFromEnv() (Configuration, error) {
 }
 
 func (c *Configuration) init() error {
-	if err := c.AppsDir().MkdirAll(); err != nil {
-		return err
-	}
-	if err := c.examplesDir().Join("common").MkdirAll(); err != nil {
-		return err
-	}
-	if err := c.AssetsDir().MkdirAll(); err != nil {
-		return err
-	}
-	if err := c.ModelsDir().MkdirAll(); err != nil {
-		return err
-	}
-	return nil
+	// Only create paths under AppsDir here. AppsDir defaults to $HOME/ArduinoApps
+	// and is naturally owned by the running user, so MkdirAll is safe.
+	//
+	// Paths under DataDir (/var/lib/arduino-app-cli/...) MUST NOT be created here:
+	// the deb postinst chowns them to arduino:arduino, and if arduino-app-cli is
+	// ever invoked as root (e.g. via sudo) with a missing subpath, MkdirAll would
+	// re-create it as root:root and break subsequent writes by the arduino user.
+	// Data-dir subpaths are the deb's responsibility (or, for tests, the test
+	// helper's).
+	return c.AppsDir().MkdirAll()
 }
 
 func (c *Configuration) AppsDir() *paths.Path {

@@ -143,14 +143,24 @@ func NewFromEnv() (Configuration, error) {
 		ArduinoPlatformVersionConstraint: constraint,
 	}
 
-	return c, c.ensureUserDirs()
+	return c, nil
 }
 
-func (c *Configuration) ensureUserDirs() error {
-	if err := c.appsDir.MkdirAll(); err != nil {
+// EnsureFolders creates all folders the CLI needs.
+func (c *Configuration) EnsureFolders() error {
+	if err := c.AppsDir().MkdirAll(); err != nil {
 		return err
 	}
-	if err := c.customModelsDir.MkdirAll(); err != nil {
+	if err := c.CustomModelsDir().MkdirAll(); err != nil {
+		return err
+	}
+	if err := c.examplesDir().Join("common").MkdirAll(); err != nil {
+		return err
+	}
+	if err := c.AssetsDir().MkdirAll(); err != nil {
+		return err
+	}
+	if err := c.ModelsDir().MkdirAll(); err != nil {
 		return err
 	}
 	return nil

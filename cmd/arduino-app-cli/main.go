@@ -95,6 +95,10 @@ func main() {
 		feedback.Fatal("arduino-app-cli must be run as a non-root user with UID 1000. Try `su - arduino` before this command.", feedback.ErrGeneric)
 	}
 
+	if err := configuration.EnsureFolders(); err != nil {
+		feedback.FatalError(err, feedback.ErrGeneric)
+	}
+
 	if err := run(configuration); err != nil {
 		if errors.Is(err, orchestrator.ErrDockerOutOfSpace) {
 			// Return a specific error code in case a specific error happened (disk full when pulling docker images).

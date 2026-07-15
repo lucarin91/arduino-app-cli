@@ -146,23 +146,26 @@ func NewFromEnv() (Configuration, error) {
 	return c, nil
 }
 
-// EnsureFolders creates all folders the CLI needs.
+// EnsureFolders creates the folders in the $HOME directory and
+// verifies the shared folders under DataDir are present.
 func (c *Configuration) EnsureFolders() error {
+	required := []*paths.Path{
+		c.ModelsDir(),
+		c.AssetsDir(),
+	}
+	for _, d := range required {
+		if d.NotExist() {
+			return fmt.Errorf("required directory %s does not exist: reinstall arduino-app-cli or create it manually (chown arduino:arduino)", d)
+		}
+	}
+
 	if err := c.AppsDir().MkdirAll(); err != nil {
 		return err
 	}
 	if err := c.CustomModelsDir().MkdirAll(); err != nil {
 		return err
 	}
-	if err := c.examplesDir().Join("common").MkdirAll(); err != nil {
-		return err
-	}
-	if err := c.AssetsDir().MkdirAll(); err != nil {
-		return err
-	}
-	if err := c.ModelsDir().MkdirAll(); err != nil {
-		return err
-	}
+
 	return nil
 }
 

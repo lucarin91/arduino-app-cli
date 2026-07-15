@@ -123,6 +123,10 @@ func httpHandler(ctx context.Context, cfg config.Configuration, daemonPort, vers
 	}
 	apiSrv = corsMiddlware.Wrap(apiSrv)
 
+	// Mount the editor WebSocket endpoint. Kept in a separate file so the
+	// coupling between the daemon and internal/editor stays a single seam.
+	apiSrv = mountEditor(apiSrv, cfg, corsConfig.Origins)
+
 	// Start the HTTP server
 	address := "127.0.0.1:" + daemonPort
 	httpSrv := http.Server{

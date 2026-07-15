@@ -12,10 +12,8 @@ import (
 	"github.com/arduino/go-paths-helper"
 )
 
-// FindAppsInFolder scans the given paths recursively to find Arduino Apps and
-// returns the list of found app paths. Paths that do not exist on disk are
-// silently skipped: a missing examples or apps directory just means no apps
-// there, not a failure.
+// FindAppsInFolders scans the given paths recursively to find Arduino Apps.
+// Paths that do not exist on disk are skipped.
 func FindAppsInFolders(pathsToExplore paths.PathList) (paths.PathList, error) {
 	var result paths.PathList
 	var allErrors error

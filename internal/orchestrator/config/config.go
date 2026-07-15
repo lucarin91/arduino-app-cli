@@ -90,11 +90,6 @@ func NewFromEnv() (Configuration, error) {
 		}
 		customModelsDir = paths.New(homeDir, ".arduino-bricks/models")
 	}
-	if customModelsDir.NotExist() {
-		if err := customModelsDir.MkdirAll(); err != nil {
-			slog.Warn("failed create custom model directory", "error", err)
-		}
-	}
 
 	registryBase := getDockerRegistryBase()
 	pythonImage, usedPythonImageTag := getPythonImageAndTag(registryBase)
@@ -147,7 +142,18 @@ func NewFromEnv() (Configuration, error) {
 		EdgeImpulseAPIURL:                parsedEdgeImpulseURL,
 		ArduinoPlatformVersionConstraint: constraint,
 	}
-	return c, nil
+
+	return c, c.ensureUserDirs()
+}
+
+func (c *Configuration) ensureUserDirs() error {
+	if err := c.appsDir.MkdirAll(); err != nil {
+		return err
+	}
+	if err := c.customModelsDir.MkdirAll(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (c *Configuration) AppsDir() *paths.Path {

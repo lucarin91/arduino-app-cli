@@ -16,14 +16,12 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"os"
 	"sync"
 	"time"
 
+	"github.com/arduino/go-paths-helper"
 	"github.com/gorilla/websocket"
 	"github.com/sourcegraph/jsonrpc2"
-
-	"github.com/arduino/arduino-app-cli/internal/editor/rootpath"
 )
 
 const (
@@ -35,14 +33,12 @@ const (
 	nChanged, nWatchErr       = "fs.changed", "fs.watchError"
 	pingInterval, pongTimeout = 30 * time.Second, 10 * time.Second
 
-	codePathOutsideRoot = -32001
-	codeWatchLimit      = -32002
-	codeNotSubscribed   = -32003
-	codeWatcherFail     = -32004
+	codeWatchLimit    = -32002
+	codeNotSubscribed = -32003
+	codeWatcherFail   = -32004
 )
 
 type Config struct {
-	Root        string
 	MaxWatches  int
 	Logger      *slog.Logger
 	CheckOrigin func(*http.Request) bool // nil = accept any
@@ -52,17 +48,9 @@ func New(cfg Config) (http.Handler, error) {
 	if cfg.Logger == nil {
 		return nil, errors.New("editor: Logger required")
 	}
-	if cfg.Root == "" {
-		return nil, errors.New("editor: Root required")
-	}
 	if cfg.MaxWatches <= 0 {
 		cfg.MaxWatches = 1024
 	}
-	root, err := os.OpenRoot(cfg.Root)
-	if err != nil {
-		return nil, err
-	}
-	cfg.Root = root.Name()
 
 	up := websocket.Upgrader{
 		ReadBufferSize: 4096, WriteBufferSize: 4096,
@@ -74,13 +62,12 @@ func New(cfg Config) (http.Handler, error) {
 			cfg.Logger.Error("editor: upgrade failed", slog.String("err", err.Error()))
 			return
 		}
-		(&session{cfg: cfg, root: root, conn: conn, subs: map[string]*subscription{}}).run(r.Context())
+		(&session{cfg: cfg, conn: conn, subs: map[string]*subscription{}}).run(r.Context())
 	}), nil
 }
 
 type session struct {
 	cfg  Config
-	root *os.Root
 	conn *websocket.Conn
 	rpc  *jsonrpc2.Conn
 	mu   sync.Mutex
@@ -150,11 +137,11 @@ func (s *session) handle(ctx context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Re
 			}
 		}
 		if p.Path == "" {
-			p.Path = "."
+			return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeInvalidParams, Message: "path is required"}
 		}
-		target, err := rootpath.New(s.root, p.Path)
-		if err != nil {
-			return nil, &jsonrpc2.Error{Code: codePathOutsideRoot, Message: err.Error()}
+		target := paths.New(p.Path)
+		if !target.IsAbs() {
+			return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeInvalidParams, Message: "path must be absolute"}
 		}
 		s.mu.Lock()
 		full := len(s.subs) >= s.cfg.MaxWatches
@@ -236,10 +223,10 @@ type watchParams struct {
 }
 
 type changeEvent struct {
-	Type    string         `json:"type"` // create|update|delete|rename
-	Path    *rootpath.Path `json:"path"`
-	IsDir   bool           `json:"isDir"`
-	OldPath *rootpath.Path `json:"oldPath,omitempty"`
+	Type    string      `json:"type"` // create|update|delete|rename
+	Path    *paths.Path `json:"path"`
+	IsDir   bool        `json:"isDir"`
+	OldPath *paths.Path `json:"oldPath,omitempty"`
 }
 
 // wsStream adapts *websocket.Conn to jsonrpc2.ObjectStream (one JSON per text frame).

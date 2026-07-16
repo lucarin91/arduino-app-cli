@@ -22,6 +22,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/arduino/go-paths-helper"
+
 	"github.com/arduino/arduino-app-cli/internal/editor"
 )
 
@@ -30,9 +32,9 @@ type notif struct {
 	Params json.RawMessage
 }
 
-func dial(t *testing.T, root string) (*jsonrpc2.Conn, chan notif, func()) {
+func dial(t *testing.T) (*jsonrpc2.Conn, chan notif, func()) {
 	t.Helper()
-	h, err := editor.New(editor.Config{Root: root, MaxWatches: 16, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	h, err := editor.New(editor.Config{MaxWatches: 16, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	require.NoError(t, err)
 	srv := httptest.NewServer(h)
 	c, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http"), nil)
@@ -76,7 +78,7 @@ func (s wsStream) ReadObject(v interface{}) error {
 func (s wsStream) Close() error { return s.c.Close() }
 
 func TestServer_Hello(t *testing.T) {
-	rpc, _, cleanup := dial(t, t.TempDir())
+	rpc, _, cleanup := dial(t)
 	defer cleanup()
 	var res struct {
 		Protocol     string   `json:"protocol"`
@@ -92,15 +94,15 @@ func TestServer_Hello(t *testing.T) {
 }
 
 func TestServer_WatchProducesNotification(t *testing.T) {
-	root := t.TempDir()
-	rpc, notifs, cleanup := dial(t, root)
+	root := paths.New(t.TempDir()).Canonical().String()
+	rpc, notifs, cleanup := dial(t)
 	defer cleanup()
 
 	var wr struct {
 		SubscriptionID string `json:"subscriptionId"`
 	}
 	require.NoError(t, rpc.Call(context.Background(), "fs.watch", map[string]any{
-		"path": ".", "recursive": true, "debounceMs": 30,
+		"path": root, "recursive": true, "debounceMs": 30,
 	}, &wr))
 	require.NotEmpty(t, wr.SubscriptionID)
 
@@ -119,14 +121,14 @@ func TestServer_WatchProducesNotification(t *testing.T) {
 		require.NoError(t, json.Unmarshal(n.Params, &payload))
 		assert.Equal(t, wr.SubscriptionID, payload.SubscriptionID)
 		require.NotEmpty(t, payload.Events)
-		assert.Equal(t, "hello.txt", payload.Events[0].Path)
+		assert.Equal(t, filepath.Join(root, "hello.txt"), payload.Events[0].Path)
 	case <-time.After(3 * time.Second):
 		t.Fatal("timeout waiting for fs.changed")
 	}
 }
 
 func TestServer_UnknownSubscriptionErrors(t *testing.T) {
-	rpc, _, cleanup := dial(t, t.TempDir())
+	rpc, _, cleanup := dial(t)
 	defer cleanup()
 	var out struct{}
 	err := rpc.Call(context.Background(), "fs.unwatch", map[string]any{"subscriptionId": "sub-nope"}, &out)

@@ -14,23 +14,23 @@ import (
 	"testing"
 	"time"
 
+	"github.com/arduino/go-paths-helper"
 	"github.com/stretchr/testify/require"
-
-	"github.com/arduino/arduino-app-cli/internal/editor/rootpath"
 )
 
 func testLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
 
 // newTestSub is a helper that spins up a recursive subscription rooted at dir
 // with a short debounce, ready to receive events.
-func newTestSub(t *testing.T, root *os.Root, opts watchParams) *watchSub {
+func newTestSub(t *testing.T, dir string, opts watchParams) *watchSub {
 	t.Helper()
 	if opts.DebounceMs == 0 {
 		opts.DebounceMs = 30
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	sub, err := newWatchSub(ctx, rootpath.RootOf(root), opts, testLogger())
+	rootCanon := paths.New(dir).Canonical().String()
+	sub, err := newWatchSub(ctx, paths.New(rootCanon), opts, testLogger())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = sub.fsw.Close() })
 	time.Sleep(50 * time.Millisecond) // give fsnotify a moment
@@ -55,16 +55,12 @@ func waitForPath(t *testing.T, sub *watchSub, wantPath string, wantType string) 
 }
 
 func TestWatch_UpdateEvent(t *testing.T) {
-	tmpdir := t.TempDir()
-	root, err := os.OpenRoot(tmpdir)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = root.Close() })
-
-	f := filepath.Join(tmpdir, "hello.txt")
+	root := paths.New(t.TempDir()).Canonical().String()
+	f := filepath.Join(root, "hello.txt")
 	require.NoError(t, os.WriteFile(f, []byte("hi"), 0o600))
 	sub := newTestSub(t, root, watchParams{Recursive: true})
 	require.NoError(t, os.WriteFile(f, []byte("hi2"), 0o600))
-	waitForPath(t, sub, "hello.txt", "update")
+	waitForPath(t, sub, f, "update")
 }
 
 // Reproduces vim's default `:w` on Linux (backupcopy=no): rename the original
@@ -73,13 +69,9 @@ func TestWatch_UpdateEvent(t *testing.T) {
 // debounce window; without special handling coalesce would drop the target
 // entirely. It must surface as "update".
 func TestWatch_AtomicReplaceSaveEmitsUpdate(t *testing.T) {
-	tmpdir := t.TempDir()
-	root, err := os.OpenRoot(tmpdir)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = root.Close() })
-
-	f := filepath.Join(tmpdir, "asd")
-	backup := filepath.Join(tmpdir, ".asd~")
+	root := paths.New(t.TempDir()).Canonical().String()
+	f := filepath.Join(root, "asd")
+	backup := filepath.Join(root, ".asd~")
 	require.NoError(t, os.WriteFile(f, []byte("v1"), 0o600))
 	sub := newTestSub(t, root, watchParams{Recursive: true})
 
@@ -87,49 +79,37 @@ func TestWatch_AtomicReplaceSaveEmitsUpdate(t *testing.T) {
 	require.NoError(t, os.WriteFile(f, []byte("v2"), 0o600))
 	require.NoError(t, os.Remove(backup))
 
-	waitForPath(t, sub, "asd", "update")
+	waitForPath(t, sub, f, "update")
 }
 
 func TestWatch_CreateAndDelete(t *testing.T) {
-	tmpdir := t.TempDir()
-	root, err := os.OpenRoot(tmpdir)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = root.Close() })
-
+	root := paths.New(t.TempDir()).Canonical().String()
 	sub := newTestSub(t, root, watchParams{Recursive: true})
-	f := filepath.Join(tmpdir, "new.txt")
+	f := filepath.Join(root, "new.txt")
 	require.NoError(t, os.WriteFile(f, []byte("x"), 0o600))
-	waitForPath(t, sub, "new.txt", "create")
+	waitForPath(t, sub, f, "create")
 	require.NoError(t, os.Remove(f))
-	waitForPath(t, sub, "new.txt", "delete")
+	waitForPath(t, sub, f, "delete")
 }
 
 func TestWatch_RecursiveNestedCreateRace(t *testing.T) {
-	tmpdir := t.TempDir()
-	root, err := os.OpenRoot(tmpdir)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = root.Close() })
-
+	root := paths.New(t.TempDir()).Canonical().String()
 	sub := newTestSub(t, root, watchParams{Recursive: true})
-	require.NoError(t, os.MkdirAll(filepath.Join(tmpdir, "a", "b", "c"), 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(tmpdir, "a", "b", "c", "file.txt"), []byte("x"), 0o600))
-	waitForPath(t, sub, "a/b/c/file.txt", "")
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "a", "b", "c"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "a", "b", "c", "file.txt"), []byte("x"), 0o600))
+	waitForPath(t, sub, filepath.Join(root, "a", "b", "c", "file.txt"), "")
 }
 
 func TestWatch_Excludes(t *testing.T) {
-	tmpdir := t.TempDir()
-	root, err := os.OpenRoot(tmpdir)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = root.Close() })
-
-	require.NoError(t, os.MkdirAll(filepath.Join(tmpdir, "node_modules"), 0o755))
-	require.NoError(t, os.MkdirAll(filepath.Join(tmpdir, "src"), 0o755))
+	root := paths.New(t.TempDir()).Canonical().String()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "node_modules"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "src"), 0o755))
 	sub := newTestSub(t, root, watchParams{Recursive: true, Excludes: []string{"node_modules/**"}})
-	require.NoError(t, os.WriteFile(filepath.Join(tmpdir, "node_modules", "a.js"), []byte("x"), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(tmpdir, "src", "a.ts"), []byte("x"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "node_modules", "a.js"), []byte("x"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "src", "a.ts"), []byte("x"), 0o600))
 
-	wantSrc := "src/a.ts"
-	wantNM := "node_modules/a.js"
+	wantSrc := filepath.Join(root, "src", "a.ts")
+	wantNM := filepath.Join(root, "node_modules", "a.js")
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		select {

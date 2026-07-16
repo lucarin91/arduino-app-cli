@@ -13,9 +13,8 @@ import (
 	"github.com/arduino/arduino-app-cli/internal/orchestrator/config"
 )
 
-func mountEditor(base http.Handler, cfg config.Configuration, allowedOrigins []string) http.Handler {
+func mountEditor(base http.Handler, _ config.Configuration, allowedOrigins []string) http.Handler {
 	edHandler, err := editor.New(editor.Config{
-		Root:   cfg.AppsDir().String(),
 		Logger: slog.Default(),
 		// TODO: wire allowedOrigins through a CheckOrigin func once the shared
 		// origin helper is factored out; phase 1 accepts any origin (the

@@ -44,7 +44,7 @@ func waitForPath(t *testing.T, sub *watchSub, wantPath string, wantType string) 
 		select {
 		case ev := <-sub.events:
 			for _, e := range ev {
-				if e.Path == wantPath && (wantType == "" || e.Type == wantType) {
+				if e.Path.String() == wantPath && (wantType == "" || e.Type == wantType) {
 					return
 				}
 			}
@@ -60,6 +60,25 @@ func TestWatch_UpdateEvent(t *testing.T) {
 	require.NoError(t, os.WriteFile(f, []byte("hi"), 0o600))
 	sub := newTestSub(t, root, watchParams{Recursive: true})
 	require.NoError(t, os.WriteFile(f, []byte("hi2"), 0o600))
+	waitForPath(t, sub, f, "update")
+}
+
+// Reproduces vim's default `:w` on Linux (backupcopy=no): rename the original
+// out of the way, then write a new file at the same path, then unlink the
+// backup. On the target path fsnotify emits Rename+Create+Write in one
+// debounce window; without special handling coalesce would drop the target
+// entirely. It must surface as "update".
+func TestWatch_AtomicReplaceSaveEmitsUpdate(t *testing.T) {
+	root := paths.New(t.TempDir()).Canonical().String()
+	f := filepath.Join(root, "asd")
+	backup := filepath.Join(root, ".asd~")
+	require.NoError(t, os.WriteFile(f, []byte("v1"), 0o600))
+	sub := newTestSub(t, root, watchParams{Recursive: true})
+
+	require.NoError(t, os.Rename(f, backup))
+	require.NoError(t, os.WriteFile(f, []byte("v2"), 0o600))
+	require.NoError(t, os.Remove(backup))
+
 	waitForPath(t, sub, f, "update")
 }
 
@@ -96,10 +115,10 @@ func TestWatch_Excludes(t *testing.T) {
 		select {
 		case ev := <-sub.events:
 			for _, e := range ev {
-				if e.Path == wantSrc {
+				if e.Path.String() == wantSrc {
 					return
 				}
-				if e.Path == wantNM {
+				if e.Path.String() == wantNM {
 					t.Fatalf("excluded event leaked: %+v", e)
 				}
 			}

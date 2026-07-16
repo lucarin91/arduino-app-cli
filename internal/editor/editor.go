@@ -232,10 +232,10 @@ type watchParams struct {
 }
 
 type changeEvent struct {
-	Type    string `json:"type"` // create|update|delete|rename
-	Path    string `json:"path"`
-	IsDir   bool   `json:"isDir"`
-	OldPath string `json:"oldPath,omitempty"`
+	Type    string      `json:"type"` // create|update|delete|rename
+	Path    *paths.Path `json:"path"`
+	IsDir   bool        `json:"isDir"`
+	OldPath *paths.Path `json:"oldPath,omitempty"`
 }
 
 // wsStream adapts *websocket.Conn to jsonrpc2.ObjectStream (one JSON per text frame).

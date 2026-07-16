@@ -23,7 +23,7 @@ const defaultDebounce = 50 * time.Millisecond
 
 type rawEvent struct {
 	Op    fsnotify.Op
-	Path  string
+	Path  *paths.Path
 	IsDir bool
 }
 
@@ -92,7 +92,7 @@ func (s *watchSub) walkAdd(dir *paths.Path, visited map[string]struct{}, emit *[
 	}
 	for _, e := range entries {
 		if emit != nil {
-			*emit = append(*emit, rawEvent{Op: fsnotify.Create, Path: e.String(), IsDir: e.IsDir()})
+			*emit = append(*emit, rawEvent{Op: fsnotify.Create, Path: e, IsDir: e.IsDir()})
 		}
 		if !e.IsDir() {
 			continue
@@ -134,10 +134,10 @@ func (s *watchSub) loop(ctx context.Context, recursive bool, debounce time.Durat
 		}
 		return timer.C
 	}
-	relTo := func(p string) string {
-		r, err := paths.New(p).RelFrom(s.path)
+	relTo := func(p *paths.Path) string {
+		r, err := p.RelFrom(s.path)
 		if err != nil {
-			return p
+			return p.String()
 		}
 		return r.String()
 	}
@@ -145,10 +145,11 @@ func (s *watchSub) loop(ctx context.Context, recursive bool, debounce time.Durat
 		if len(buf) == 0 {
 			return
 		}
-		out := f.Filter(coalesce(buf), func(e changeEvent) bool {
+		out := coalesce(buf)
+		buf = buf[:0]
+		out = f.Filter(out, func(e changeEvent) bool {
 			return matchGlobs(relTo(e.Path), s.includes, s.excludes)
 		})
-		buf = buf[:0]
 		if len(out) == 0 {
 			return
 		}
@@ -167,10 +168,11 @@ func (s *watchSub) loop(ctx context.Context, recursive bool, debounce time.Durat
 				flush()
 				return
 			}
-			isDir := paths.New(ev.Name).IsDir()
-			buf = append(buf, rawEvent{Op: ev.Op, Path: ev.Name, IsDir: isDir})
+			p := paths.New(ev.Name)
+			isDir := p.IsDir()
+			buf = append(buf, rawEvent{Op: ev.Op, Path: p, IsDir: isDir})
 			if recursive && isDir && ev.Op&fsnotify.Create != 0 {
-				if err := s.walkAdd(paths.New(ev.Name), map[string]struct{}{}, &buf); err != nil {
+				if err := s.walkAdd(p, map[string]struct{}{}, &buf); err != nil {
 					s.log.Debug("editor: recursive add", slog.String("path", ev.Name), slog.String("err", err.Error()))
 				}
 			}
@@ -203,18 +205,25 @@ func (s *watchSub) loop(ctx context.Context, recursive bool, debounce time.Durat
 // coalesce collapses a debounce window: CREATE+WRITE→create, multi-WRITE→
 // update, CREATE+REMOVE cancels; a lone remove + lone top-level create in the
 // same parent dir becomes a rename. When a directory rename is detected the
+// coalesce collapses a debounce window: CREATE+WRITE→create, multi-WRITE→
+// update, CREATE+REMOVE cancels; a lone remove + lone top-level create in the
+// same parent dir becomes a rename. When a directory rename is detected the
 // synthesized descendant creates under the new dir are dropped from the output
 // (implied by the rename).
 func coalesce(batch []rawEvent) []changeEvent {
-	type state struct{ created, written, removed, isDir bool }
+	type state struct {
+		created, written, removed, isDir bool
+		path                             *paths.Path
+	}
 	byPath := map[string]*state{}
-	var order []string
+	var order paths.PathList
 	for _, e := range batch {
-		st, ok := byPath[e.Path]
+		key := e.Path.String()
+		st, ok := byPath[key]
 		if !ok {
-			st = &state{isDir: e.IsDir}
-			byPath[e.Path] = st
-			order = append(order, e.Path)
+			st = &state{isDir: e.IsDir, path: e.Path}
+			byPath[key] = st
+			order.Add(e.Path)
 		}
 		if e.IsDir {
 			st.isDir = true
@@ -229,71 +238,73 @@ func coalesce(batch []rawEvent) []changeEvent {
 		}
 	}
 
-	createdSet, removedSet := map[string]bool{}, map[string]bool{}
-	for p, st := range byPath {
+	var created, removed paths.PathList
+	for _, p := range order {
+		st := byPath[p.String()]
 		if st.created && !st.removed {
-			createdSet[p] = true
+			created.Add(p)
 		}
 		if st.removed && !st.created {
-			removedSet[p] = true
+			removed.Add(p)
 		}
 	}
-	topCreated, topRemoved := []string{}, []string{}
-	for p := range createdSet {
-		if !createdSet[paths.New(p).Parent().String()] {
-			topCreated = append(topCreated, p)
+	var topCreated, topRemoved paths.PathList
+	for _, p := range created {
+		if !created.ContainsEquivalentTo(p.Parent()) {
+			topCreated.Add(p)
 		}
 	}
-	for p := range removedSet {
-		if !removedSet[paths.New(p).Parent().String()] {
-			topRemoved = append(topRemoved, p)
+	for _, p := range removed {
+		if !removed.ContainsEquivalentTo(p.Parent()) {
+			topRemoved.Add(p)
 		}
 	}
-	var rm, cr string
+	var rm, cr *paths.Path
 	renamePair := len(topCreated) == 1 && len(topRemoved) == 1 &&
-		paths.New(topRemoved[0]).Parent().EquivalentTo(paths.New(topCreated[0]).Parent())
+		topRemoved[0].Parent().EquivalentTo(topCreated[0].Parent())
 	if renamePair {
 		rm, cr = topRemoved[0], topCreated[0]
 	}
 	// When renaming a directory, drop synthesized descendant creates.
-	suppress := map[string]bool{}
-	if renamePair && byPath[cr].isDir {
-		crP := paths.New(cr)
-		for p := range createdSet {
-			if p == cr {
+	var suppress paths.PathList
+	if renamePair && byPath[cr.String()].isDir {
+		for _, p := range created {
+			if p.EquivalentTo(cr) {
 				continue
 			}
-			if inside, err := paths.New(p).IsInsideDir(crP); err == nil && inside {
-				suppress[p] = true
+			if inside, err := p.IsInsideDir(cr); err == nil && inside {
+				suppress.Add(p)
 			}
 		}
 	}
 
+	order.Sort()
 	out := make([]changeEvent, 0, len(order))
 	for _, p := range order {
-		st := byPath[p]
+		st := byPath[p.String()]
 		switch {
-		case renamePair && p == cr:
+		case renamePair && p.EquivalentTo(cr):
 			out = append(out, changeEvent{Type: "rename", Path: p, OldPath: rm, IsDir: st.isDir})
-		case renamePair && p == rm:
-		case suppress[p]:
+		case renamePair && p.EquivalentTo(rm):
+		case suppress.ContainsEquivalentTo(p):
 		case st.removed && !st.created:
 			out = append(out, changeEvent{Type: "delete", Path: p, IsDir: st.isDir})
 		case st.created && st.removed:
+			// Path was removed and (re)created in the same debounce
+			// window. Typical cause: atomic-replace save (editor writes
+			// a temp then rename(tmp, target)), which emits Rename +
+			// Create + Write on the target. If the path still exists,
+			// surface it as an "update"; otherwise it was a true
+			// transient and we drop it.
+			if p.Exist() {
+				out = append(out, changeEvent{Type: "update", Path: p, IsDir: st.isDir})
+			}
 		case st.created:
 			out = append(out, changeEvent{Type: "create", Path: p, IsDir: st.isDir})
 		case st.written:
 			out = append(out, changeEvent{Type: "update", Path: p, IsDir: st.isDir})
 		}
 	}
-	slices.SortStableFunc(out, func(a, b changeEvent) int {
-		if a.Path < b.Path {
-			return -1
-		} else if a.Path > b.Path {
-			return 1
-		}
-		return 0
-	})
 	return out
 }
 

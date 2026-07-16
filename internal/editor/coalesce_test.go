@@ -8,6 +8,7 @@ package editor
 import (
 	"testing"
 
+	"github.com/arduino/go-paths-helper"
 	"github.com/fsnotify/fsnotify"
 	"github.com/stretchr/testify/assert"
 )
@@ -21,54 +22,54 @@ func TestCoalesce(t *testing.T) {
 		{
 			"create+writes -> create",
 			[]rawEvent{
-				{Op: fsnotify.Create, Path: "/root/a"},
-				{Op: fsnotify.Write, Path: "/root/a"},
-				{Op: fsnotify.Write, Path: "/root/a"},
+				{Op: fsnotify.Create, Path: paths.New("/root/a")},
+				{Op: fsnotify.Write, Path: paths.New("/root/a")},
+				{Op: fsnotify.Write, Path: paths.New("/root/a")},
 			},
-			[]changeEvent{{Type: "create", Path: "/root/a"}},
+			[]changeEvent{{Type: "create", Path: paths.New("/root/a")}},
 		},
 		{
 			"writes -> update",
 			[]rawEvent{
-				{Op: fsnotify.Write, Path: "/root/a"},
-				{Op: fsnotify.Write, Path: "/root/a"},
+				{Op: fsnotify.Write, Path: paths.New("/root/a")},
+				{Op: fsnotify.Write, Path: paths.New("/root/a")},
 			},
-			[]changeEvent{{Type: "update", Path: "/root/a"}},
+			[]changeEvent{{Type: "update", Path: paths.New("/root/a")}},
 		},
 		{
 			"create+remove cancels",
 			[]rawEvent{
-				{Op: fsnotify.Create, Path: "/root/tmp"},
-				{Op: fsnotify.Remove, Path: "/root/tmp"},
+				{Op: fsnotify.Create, Path: paths.New("/root/tmp")},
+				{Op: fsnotify.Remove, Path: paths.New("/root/tmp")},
 			},
 			nil,
 		},
 		{
 			"rename pairing",
 			[]rawEvent{
-				{Op: fsnotify.Rename, Path: "/root/a"},
-				{Op: fsnotify.Create, Path: "/root/b"},
+				{Op: fsnotify.Rename, Path: paths.New("/root/a")},
+				{Op: fsnotify.Create, Path: paths.New("/root/b")},
 			},
-			[]changeEvent{{Type: "rename", Path: "/root/b", OldPath: "/root/a"}},
+			[]changeEvent{{Type: "rename", Path: paths.New("/root/b"), OldPath: paths.New("/root/a")}},
 		},
 		{
 			"dir rename with contents pairs and drops descendants",
 			[]rawEvent{
-				{Op: fsnotify.Rename, Path: "/root/py", IsDir: true},
-				{Op: fsnotify.Create, Path: "/root/py2", IsDir: true},
-				{Op: fsnotify.Create, Path: "/root/py2/main.py"},
+				{Op: fsnotify.Rename, Path: paths.New("/root/py"), IsDir: true},
+				{Op: fsnotify.Create, Path: paths.New("/root/py2"), IsDir: true},
+				{Op: fsnotify.Create, Path: paths.New("/root/py2/main.py")},
 			},
-			[]changeEvent{{Type: "rename", Path: "/root/py2", OldPath: "/root/py", IsDir: true}},
+			[]changeEvent{{Type: "rename", Path: paths.New("/root/py2"), OldPath: paths.New("/root/py"), IsDir: true}},
 		},
 		{
 			"unpaired delete+create in different dirs stay separate",
 			[]rawEvent{
-				{Op: fsnotify.Remove, Path: "/root/a"},
-				{Op: fsnotify.Create, Path: "/root/sub/b"},
+				{Op: fsnotify.Remove, Path: paths.New("/root/a")},
+				{Op: fsnotify.Create, Path: paths.New("/root/sub/b")},
 			},
 			[]changeEvent{
-				{Type: "delete", Path: "/root/a"},
-				{Type: "create", Path: "/root/sub/b"},
+				{Type: "delete", Path: paths.New("/root/a")},
+				{Type: "create", Path: paths.New("/root/sub/b")},
 			},
 		},
 	}

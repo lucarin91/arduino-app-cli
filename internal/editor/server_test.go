@@ -22,6 +22,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/arduino/go-paths-helper"
+
 	"github.com/arduino/arduino-app-cli/internal/editor"
 )
 
@@ -32,6 +34,7 @@ type notif struct {
 
 func dial(t *testing.T, root string) (*jsonrpc2.Conn, chan notif, func()) {
 	t.Helper()
+	root = paths.New(root).Canonical().String()
 	h, err := editor.New(editor.Config{Root: root, MaxWatches: 16, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	require.NoError(t, err)
 	srv := httptest.NewServer(h)
@@ -92,7 +95,7 @@ func TestServer_Hello(t *testing.T) {
 }
 
 func TestServer_WatchProducesNotification(t *testing.T) {
-	root := t.TempDir()
+	root := paths.New(t.TempDir()).Canonical().String()
 	rpc, notifs, cleanup := dial(t, root)
 	defer cleanup()
 
@@ -119,21 +122,10 @@ func TestServer_WatchProducesNotification(t *testing.T) {
 		require.NoError(t, json.Unmarshal(n.Params, &payload))
 		assert.Equal(t, wr.SubscriptionID, payload.SubscriptionID)
 		require.NotEmpty(t, payload.Events)
-		assert.Equal(t, "hello.txt", payload.Events[0].Path)
+		assert.Equal(t, filepath.Join(root, "hello.txt"), payload.Events[0].Path)
 	case <-time.After(3 * time.Second):
 		t.Fatal("timeout waiting for fs.changed")
 	}
-}
-
-func TestServer_WatchOutsideRootRejected(t *testing.T) {
-	rpc, _, cleanup := dial(t, t.TempDir())
-	defer cleanup()
-	var wr struct{}
-	err := rpc.Call(context.Background(), "fs.watch", map[string]any{"path": "../../etc"}, &wr)
-	require.Error(t, err)
-	jerr, ok := err.(*jsonrpc2.Error)
-	require.True(t, ok)
-	assert.Equal(t, int64(-32001), jerr.Code)
 }
 
 func TestServer_UnknownSubscriptionErrors(t *testing.T) {

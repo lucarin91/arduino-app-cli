@@ -16,7 +16,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -34,7 +33,6 @@ const (
 	nChanged, nWatchErr       = "fs.changed", "fs.watchError"
 	pingInterval, pongTimeout = 30 * time.Second, 10 * time.Second
 
-	codeInvalidPath   = -32001
 	codeWatchLimit    = -32002
 	codeNotSubscribed = -32003
 	codeWatcherFail   = -32004
@@ -61,7 +59,7 @@ func New(cfg Config) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	cfg.Root = root.Canonical().String()
+	cfg.Root = root.String()
 
 	up := websocket.Upgrader{
 		ReadBufferSize: 4096, WriteBufferSize: 4096,
@@ -150,10 +148,9 @@ func (s *session) handle(ctx context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Re
 		if p.Path == "" {
 			p.Path = "."
 		}
-		rootP := paths.New(s.cfg.Root)
-		target := paths.New(s.cfg.Root, filepath.FromSlash(p.Path)).Canonical()
-		if inside, err := target.IsInsideDir(rootP); err != nil || (!inside && !target.EquivalentTo(rootP)) {
-			return nil, &jsonrpc2.Error{Code: codeInvalidPath, Message: "path escapes root"}
+		target := paths.New(p.Path)
+		if !target.IsAbs() {
+			target = paths.New(s.cfg.Root, p.Path)
 		}
 		s.mu.Lock()
 		full := len(s.subs) >= s.cfg.MaxWatches
@@ -163,7 +160,7 @@ func (s *session) handle(ctx context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Re
 		}
 
 		subCtx, cancel := context.WithCancel(ctx)
-		w, err := newWatchSub(subCtx, s.cfg.Root, target, p, s.cfg.Logger)
+		w, err := newWatchSub(subCtx, target, p, s.cfg.Logger)
 		if err != nil {
 			cancel()
 			return nil, &jsonrpc2.Error{Code: codeWatcherFail, Message: err.Error()}

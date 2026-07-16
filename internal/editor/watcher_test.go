@@ -30,7 +30,7 @@ func newTestSub(t *testing.T, dir string, opts watchParams) *watchSub {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	rootCanon := paths.New(dir).Canonical().String()
-	sub, err := newWatchSub(ctx, rootCanon, paths.New(rootCanon), opts, testLogger())
+	sub, err := newWatchSub(ctx, paths.New(rootCanon), opts, testLogger())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = sub.fsw.Close() })
 	time.Sleep(50 * time.Millisecond) // give fsnotify a moment
@@ -55,49 +55,51 @@ func waitForPath(t *testing.T, sub *watchSub, wantPath string, wantType string) 
 }
 
 func TestWatch_UpdateEvent(t *testing.T) {
-	root := t.TempDir()
+	root := paths.New(t.TempDir()).Canonical().String()
 	f := filepath.Join(root, "hello.txt")
 	require.NoError(t, os.WriteFile(f, []byte("hi"), 0o600))
 	sub := newTestSub(t, root, watchParams{Recursive: true})
 	require.NoError(t, os.WriteFile(f, []byte("hi2"), 0o600))
-	waitForPath(t, sub, "hello.txt", "update")
+	waitForPath(t, sub, f, "update")
 }
 
 func TestWatch_CreateAndDelete(t *testing.T) {
-	root := t.TempDir()
+	root := paths.New(t.TempDir()).Canonical().String()
 	sub := newTestSub(t, root, watchParams{Recursive: true})
 	f := filepath.Join(root, "new.txt")
 	require.NoError(t, os.WriteFile(f, []byte("x"), 0o600))
-	waitForPath(t, sub, "new.txt", "create")
+	waitForPath(t, sub, f, "create")
 	require.NoError(t, os.Remove(f))
-	waitForPath(t, sub, "new.txt", "delete")
+	waitForPath(t, sub, f, "delete")
 }
 
 func TestWatch_RecursiveNestedCreateRace(t *testing.T) {
-	root := t.TempDir()
+	root := paths.New(t.TempDir()).Canonical().String()
 	sub := newTestSub(t, root, watchParams{Recursive: true})
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "a", "b", "c"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "a", "b", "c", "file.txt"), []byte("x"), 0o600))
-	waitForPath(t, sub, "a/b/c/file.txt", "")
+	waitForPath(t, sub, filepath.Join(root, "a", "b", "c", "file.txt"), "")
 }
 
 func TestWatch_Excludes(t *testing.T) {
-	root := t.TempDir()
+	root := paths.New(t.TempDir()).Canonical().String()
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "node_modules"), 0o755))
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "src"), 0o755))
 	sub := newTestSub(t, root, watchParams{Recursive: true, Excludes: []string{"node_modules/**"}})
 	require.NoError(t, os.WriteFile(filepath.Join(root, "node_modules", "a.js"), []byte("x"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "src", "a.ts"), []byte("x"), 0o600))
 
+	wantSrc := filepath.Join(root, "src", "a.ts")
+	wantNM := filepath.Join(root, "node_modules", "a.js")
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		select {
 		case ev := <-sub.events:
 			for _, e := range ev {
-				if e.Path == "src/a.ts" {
+				if e.Path == wantSrc {
 					return
 				}
-				if e.Path == "node_modules/a.js" {
+				if e.Path == wantNM {
 					t.Fatalf("excluded event leaked: %+v", e)
 				}
 			}

@@ -12,8 +12,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-const testRoot = "/root"
-
 func TestCoalesce(t *testing.T) {
 	tests := []struct {
 		name string
@@ -27,7 +25,7 @@ func TestCoalesce(t *testing.T) {
 				{Op: fsnotify.Write, Path: "/root/a"},
 				{Op: fsnotify.Write, Path: "/root/a"},
 			},
-			[]changeEvent{{Type: "create", Path: "a"}},
+			[]changeEvent{{Type: "create", Path: "/root/a"}},
 		},
 		{
 			"writes -> update",
@@ -35,7 +33,7 @@ func TestCoalesce(t *testing.T) {
 				{Op: fsnotify.Write, Path: "/root/a"},
 				{Op: fsnotify.Write, Path: "/root/a"},
 			},
-			[]changeEvent{{Type: "update", Path: "a"}},
+			[]changeEvent{{Type: "update", Path: "/root/a"}},
 		},
 		{
 			"create+remove cancels",
@@ -51,7 +49,16 @@ func TestCoalesce(t *testing.T) {
 				{Op: fsnotify.Rename, Path: "/root/a"},
 				{Op: fsnotify.Create, Path: "/root/b"},
 			},
-			[]changeEvent{{Type: "rename", Path: "b", OldPath: "a"}},
+			[]changeEvent{{Type: "rename", Path: "/root/b", OldPath: "/root/a"}},
+		},
+		{
+			"dir rename with contents pairs and drops descendants",
+			[]rawEvent{
+				{Op: fsnotify.Rename, Path: "/root/py", IsDir: true},
+				{Op: fsnotify.Create, Path: "/root/py2", IsDir: true},
+				{Op: fsnotify.Create, Path: "/root/py2/main.py"},
+			},
+			[]changeEvent{{Type: "rename", Path: "/root/py2", OldPath: "/root/py", IsDir: true}},
 		},
 		{
 			"unpaired delete+create in different dirs stay separate",
@@ -60,14 +67,14 @@ func TestCoalesce(t *testing.T) {
 				{Op: fsnotify.Create, Path: "/root/sub/b"},
 			},
 			[]changeEvent{
-				{Type: "delete", Path: "a"},
-				{Type: "create", Path: "sub/b"},
+				{Type: "delete", Path: "/root/a"},
+				{Type: "create", Path: "/root/sub/b"},
 			},
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := coalesce(testRoot, tc.in)
+			got := coalesce(tc.in)
 			if tc.want == nil {
 				assert.Empty(t, got)
 				return

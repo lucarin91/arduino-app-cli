@@ -9,7 +9,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"path/filepath"
 	"slices"
 	"sync"
 	"time"
@@ -29,10 +28,10 @@ type rawEvent struct {
 }
 
 type watchSub struct {
-	root, path *paths.Path
-	includes   []string
-	excludes   []string
-	log        *slog.Logger
+	path     *paths.Path
+	includes []string
+	excludes []string
+	log      *slog.Logger
 
 	fsw    *fsnotify.Watcher
 	events chan []changeEvent
@@ -42,7 +41,7 @@ type watchSub struct {
 	watched map[string]struct{}
 }
 
-func newWatchSub(ctx context.Context, root string, target *paths.Path, p watchParams, log *slog.Logger) (*watchSub, error) {
+func newWatchSub(ctx context.Context, target *paths.Path, p watchParams, log *slog.Logger) (*watchSub, error) {
 	fw, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, err
@@ -52,7 +51,7 @@ func newWatchSub(ctx context.Context, root string, target *paths.Path, p watchPa
 		deb = defaultDebounce
 	}
 	s := &watchSub{
-		root: paths.New(root), path: target,
+		path:     target,
 		includes: p.Includes, excludes: p.Excludes, log: log,
 		fsw:    fw,
 		events: make(chan []changeEvent, 16), errors: make(chan error, 4),
@@ -84,11 +83,6 @@ func (s *watchSub) walkAdd(dir *paths.Path, visited map[string]struct{}, emit *[
 		return nil
 	}
 	visited[key] = struct{}{}
-	if inside, err := canon.IsInsideDir(s.root); err != nil {
-		return nil
-	} else if !inside && !canon.EquivalentTo(s.root) {
-		return nil
-	}
 	if err := s.addDir(canon); err != nil {
 		return err
 	}
@@ -103,7 +97,8 @@ func (s *watchSub) walkAdd(dir *paths.Path, visited map[string]struct{}, emit *[
 		if !e.IsDir() {
 			continue
 		}
-		if rel, err := e.RelFrom(s.root); err == nil && !matchGlobs(filepath.ToSlash(rel.String()), nil, s.excludes) {
+		rel, err := e.RelFrom(s.path)
+		if err == nil && !matchGlobs(rel.String(), nil, s.excludes) {
 			continue
 		}
 		if err := s.walkAdd(e, visited, emit); err != nil {
@@ -139,12 +134,19 @@ func (s *watchSub) loop(ctx context.Context, recursive bool, debounce time.Durat
 		}
 		return timer.C
 	}
+	relTo := func(p string) string {
+		r, err := paths.New(p).RelFrom(s.path)
+		if err != nil {
+			return p
+		}
+		return r.String()
+	}
 	flush := func() {
 		if len(buf) == 0 {
 			return
 		}
-		out := f.Filter(coalesce(s.root.String(), buf), func(e changeEvent) bool {
-			return matchGlobs(e.Path, s.includes, s.excludes)
+		out := f.Filter(coalesce(buf), func(e changeEvent) bool {
+			return matchGlobs(relTo(e.Path), s.includes, s.excludes)
 		})
 		buf = buf[:0]
 		if len(out) == 0 {
@@ -199,9 +201,11 @@ func (s *watchSub) loop(ctx context.Context, recursive bool, debounce time.Durat
 }
 
 // coalesce collapses a debounce window: CREATE+WRITE→create, multi-WRITE→
-// update, CREATE+REMOVE cancels; a lone remove + lone create in the same
-// parent dir becomes a rename.
-func coalesce(root string, batch []rawEvent) []changeEvent {
+// update, CREATE+REMOVE cancels; a lone remove + lone top-level create in the
+// same parent dir becomes a rename. When a directory rename is detected the
+// synthesized descendant creates under the new dir are dropped from the output
+// (implied by the rename).
+func coalesce(batch []rawEvent) []changeEvent {
 	type state struct{ created, written, removed, isDir bool }
 	byPath := map[string]*state{}
 	var order []string
@@ -225,51 +229,61 @@ func coalesce(root string, batch []rawEvent) []changeEvent {
 		}
 	}
 
-	var rm, cr string
-	rmN, crN := 0, 0
+	createdSet, removedSet := map[string]bool{}, map[string]bool{}
 	for p, st := range byPath {
-		switch {
-		case st.removed && !st.created:
-			rmN++
-			rm = p
-		case st.created && !st.removed:
-			crN++
-			cr = p
+		if st.created && !st.removed {
+			createdSet[p] = true
+		}
+		if st.removed && !st.created {
+			removedSet[p] = true
 		}
 	}
-	renamePair := rmN == 1 && crN == 1 &&
-		paths.New(rm).Parent().EquivalentTo(paths.New(cr).Parent())
-
-	rootP := paths.New(root)
-	out := make([]changeEvent, 0, len(order))
-	rel := func(p string) (string, bool) {
-		r, err := paths.New(p).RelFrom(rootP)
-		if err != nil {
-			return "", false
+	topCreated, topRemoved := []string{}, []string{}
+	for p := range createdSet {
+		if !createdSet[paths.New(p).Parent().String()] {
+			topCreated = append(topCreated, p)
 		}
-		return filepath.ToSlash(r.String()), true
 	}
-	for _, p := range order {
-		st := byPath[p]
-		r, ok := rel(p)
-		if !ok {
-			continue
+	for p := range removedSet {
+		if !removedSet[paths.New(p).Parent().String()] {
+			topRemoved = append(topRemoved, p)
 		}
-		switch {
-		case renamePair && p == cr:
-			old, ok := rel(rm)
-			if !ok {
+	}
+	var rm, cr string
+	renamePair := len(topCreated) == 1 && len(topRemoved) == 1 &&
+		paths.New(topRemoved[0]).Parent().EquivalentTo(paths.New(topCreated[0]).Parent())
+	if renamePair {
+		rm, cr = topRemoved[0], topCreated[0]
+	}
+	// When renaming a directory, drop synthesized descendant creates.
+	suppress := map[string]bool{}
+	if renamePair && byPath[cr].isDir {
+		crP := paths.New(cr)
+		for p := range createdSet {
+			if p == cr {
 				continue
 			}
-			out = append(out, changeEvent{Type: "rename", Path: r, OldPath: old, IsDir: st.isDir})
+			if inside, err := paths.New(p).IsInsideDir(crP); err == nil && inside {
+				suppress[p] = true
+			}
+		}
+	}
+
+	out := make([]changeEvent, 0, len(order))
+	for _, p := range order {
+		st := byPath[p]
+		switch {
+		case renamePair && p == cr:
+			out = append(out, changeEvent{Type: "rename", Path: p, OldPath: rm, IsDir: st.isDir})
 		case renamePair && p == rm:
+		case suppress[p]:
 		case st.removed && !st.created:
-			out = append(out, changeEvent{Type: "delete", Path: r, IsDir: st.isDir})
+			out = append(out, changeEvent{Type: "delete", Path: p, IsDir: st.isDir})
 		case st.created && st.removed:
 		case st.created:
-			out = append(out, changeEvent{Type: "create", Path: r, IsDir: st.isDir})
+			out = append(out, changeEvent{Type: "create", Path: p, IsDir: st.isDir})
 		case st.written:
-			out = append(out, changeEvent{Type: "update", Path: r, IsDir: st.isDir})
+			out = append(out, changeEvent{Type: "update", Path: p, IsDir: st.isDir})
 		}
 	}
 	slices.SortStableFunc(out, func(a, b changeEvent) int {

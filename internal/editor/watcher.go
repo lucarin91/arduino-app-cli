@@ -13,22 +13,23 @@ import (
 	"sync"
 	"time"
 
-	"github.com/arduino/go-paths-helper"
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/fsnotify/fsnotify"
 	"go.bug.st/f"
+
+	"github.com/arduino/arduino-app-cli/internal/editor/rootpath"
 )
 
 const defaultDebounce = 50 * time.Millisecond
 
 type rawEvent struct {
 	Op    fsnotify.Op
-	Path  *paths.Path
+	Path  *rootpath.Path
 	IsDir bool
 }
 
 type watchSub struct {
-	path     *paths.Path
+	path     *rootpath.Path
 	includes []string
 	excludes []string
 	log      *slog.Logger
@@ -38,10 +39,10 @@ type watchSub struct {
 	errors chan error
 
 	mu      sync.Mutex
-	watched map[string]struct{}
+	watched map[string]struct{} // keyed by OS-abs path (what fsnotify.Add takes)
 }
 
-func newWatchSub(ctx context.Context, target *paths.Path, p watchParams, log *slog.Logger) (*watchSub, error) {
+func newWatchSub(ctx context.Context, target *rootpath.Path, p watchParams, log *slog.Logger) (*watchSub, error) {
 	fw, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, err
@@ -73,20 +74,20 @@ func newWatchSub(ctx context.Context, target *paths.Path, p watchParams, log *sl
 	return s, nil
 }
 
-// walkAdd installs watches under dir (canonical, cycle-safe). When emit is
-// non-nil it also appends synthesized Create events for every entry found —
-// used to close the recursive-watch race on `mkdir -p ... && touch ...`.
-func (s *watchSub) walkAdd(dir *paths.Path, visited map[string]struct{}, emit *[]rawEvent) error {
-	canon := dir.Canonical()
-	key := canon.String()
+// walkAdd installs watches under dir (cycle-safe via visited canonical OS
+// paths). When emit is non-nil it also appends synthesized Create events for
+// every entry found — used to close the recursive-watch race on
+// `mkdir -p ... && touch ...`.
+func (s *watchSub) walkAdd(dir *rootpath.Path, visited map[string]struct{}, emit *[]rawEvent) error {
+	key := dir.OSPath()
 	if _, seen := visited[key]; seen {
 		return nil
 	}
 	visited[key] = struct{}{}
-	if err := s.addDir(canon); err != nil {
+	if err := s.addDir(dir); err != nil {
 		return err
 	}
-	entries, err := canon.ReadDir()
+	entries, err := dir.ReadDir()
 	if err != nil {
 		return err
 	}
@@ -98,7 +99,7 @@ func (s *watchSub) walkAdd(dir *paths.Path, visited map[string]struct{}, emit *[
 			continue
 		}
 		rel, err := e.RelFrom(s.path)
-		if err == nil && !matchGlobs(rel.String(), nil, s.excludes) {
+		if err == nil && !matchGlobs(rel, nil, s.excludes) {
 			continue
 		}
 		if err := s.walkAdd(e, visited, emit); err != nil {
@@ -108,8 +109,8 @@ func (s *watchSub) walkAdd(dir *paths.Path, visited map[string]struct{}, emit *[
 	return nil
 }
 
-func (s *watchSub) addDir(dir *paths.Path) error {
-	key := dir.String()
+func (s *watchSub) addDir(dir *rootpath.Path) error {
+	key := dir.OSPath()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.watched[key]; ok {
@@ -134,12 +135,12 @@ func (s *watchSub) loop(ctx context.Context, recursive bool, debounce time.Durat
 		}
 		return timer.C
 	}
-	relTo := func(p *paths.Path) string {
+	relTo := func(p *rootpath.Path) string {
 		r, err := p.RelFrom(s.path)
 		if err != nil {
 			return p.String()
 		}
-		return r.String()
+		return r
 	}
 	flush := func() {
 		if len(buf) == 0 {
@@ -168,7 +169,11 @@ func (s *watchSub) loop(ctx context.Context, recursive bool, debounce time.Durat
 				flush()
 				return
 			}
-			p := paths.New(ev.Name)
+			p, err := rootpath.FromOSPath(s.path.Root(), ev.Name)
+			if err != nil {
+				s.log.Debug("editor: event outside root", slog.String("path", ev.Name), slog.String("err", err.Error()))
+				continue
+			}
 			isDir := p.IsDir()
 			buf = append(buf, rawEvent{Op: ev.Op, Path: p, IsDir: isDir})
 			if recursive && isDir && ev.Op&fsnotify.Create != 0 {
@@ -213,10 +218,10 @@ func (s *watchSub) loop(ctx context.Context, recursive bool, debounce time.Durat
 func coalesce(batch []rawEvent) []changeEvent {
 	type state struct {
 		created, written, removed, isDir bool
-		path                             *paths.Path
+		path                             *rootpath.Path
 	}
 	byPath := map[string]*state{}
-	var order paths.PathList
+	var order rootpath.PathList
 	for _, e := range batch {
 		key := e.Path.String()
 		st, ok := byPath[key]
@@ -238,7 +243,7 @@ func coalesce(batch []rawEvent) []changeEvent {
 		}
 	}
 
-	var created, removed paths.PathList
+	var created, removed rootpath.PathList
 	for _, p := range order {
 		st := byPath[p.String()]
 		if st.created && !st.removed {
@@ -248,7 +253,7 @@ func coalesce(batch []rawEvent) []changeEvent {
 			removed.Add(p)
 		}
 	}
-	var topCreated, topRemoved paths.PathList
+	var topCreated, topRemoved rootpath.PathList
 	for _, p := range created {
 		if !created.ContainsEquivalentTo(p.Parent()) {
 			topCreated.Add(p)
@@ -259,20 +264,20 @@ func coalesce(batch []rawEvent) []changeEvent {
 			topRemoved.Add(p)
 		}
 	}
-	var rm, cr *paths.Path
+	var rm, cr *rootpath.Path
 	renamePair := len(topCreated) == 1 && len(topRemoved) == 1 &&
 		topRemoved[0].Parent().EquivalentTo(topCreated[0].Parent())
 	if renamePair {
 		rm, cr = topRemoved[0], topCreated[0]
 	}
 	// When renaming a directory, drop synthesized descendant creates.
-	var suppress paths.PathList
+	var suppress rootpath.PathList
 	if renamePair && byPath[cr.String()].isDir {
 		for _, p := range created {
 			if p.EquivalentTo(cr) {
 				continue
 			}
-			if inside, err := p.IsInsideDir(cr); err == nil && inside {
+			if p.IsInsideDir(cr) {
 				suppress.Add(p)
 			}
 		}

@@ -6,14 +6,30 @@
 package editor
 
 import (
+	"os"
 	"testing"
 
-	"github.com/arduino/go-paths-helper"
 	"github.com/fsnotify/fsnotify"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/arduino/arduino-app-cli/internal/editor/rootpath"
 )
 
+// mkPath returns a *rootpath.Path anchored at root. Fails the test on error.
+func mkPath(t *testing.T, root *os.Root, rel string) *rootpath.Path {
+	t.Helper()
+	p, err := rootpath.New(root, rel)
+	require.NoError(t, err)
+	return p
+}
+
 func TestCoalesce(t *testing.T) {
+	root, err := os.OpenRoot(t.TempDir())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = root.Close() })
+	p := func(rel string) *rootpath.Path { return mkPath(t, root, rel) }
+
 	tests := []struct {
 		name string
 		in   []rawEvent
@@ -22,54 +38,54 @@ func TestCoalesce(t *testing.T) {
 		{
 			"create+writes -> create",
 			[]rawEvent{
-				{Op: fsnotify.Create, Path: paths.New("/root/a")},
-				{Op: fsnotify.Write, Path: paths.New("/root/a")},
-				{Op: fsnotify.Write, Path: paths.New("/root/a")},
+				{Op: fsnotify.Create, Path: p("a")},
+				{Op: fsnotify.Write, Path: p("a")},
+				{Op: fsnotify.Write, Path: p("a")},
 			},
-			[]changeEvent{{Type: "create", Path: paths.New("/root/a")}},
+			[]changeEvent{{Type: "create", Path: p("a")}},
 		},
 		{
 			"writes -> update",
 			[]rawEvent{
-				{Op: fsnotify.Write, Path: paths.New("/root/a")},
-				{Op: fsnotify.Write, Path: paths.New("/root/a")},
+				{Op: fsnotify.Write, Path: p("a")},
+				{Op: fsnotify.Write, Path: p("a")},
 			},
-			[]changeEvent{{Type: "update", Path: paths.New("/root/a")}},
+			[]changeEvent{{Type: "update", Path: p("a")}},
 		},
 		{
 			"create+remove cancels",
 			[]rawEvent{
-				{Op: fsnotify.Create, Path: paths.New("/root/tmp")},
-				{Op: fsnotify.Remove, Path: paths.New("/root/tmp")},
+				{Op: fsnotify.Create, Path: p("tmp")},
+				{Op: fsnotify.Remove, Path: p("tmp")},
 			},
 			nil,
 		},
 		{
 			"rename pairing",
 			[]rawEvent{
-				{Op: fsnotify.Rename, Path: paths.New("/root/a")},
-				{Op: fsnotify.Create, Path: paths.New("/root/b")},
+				{Op: fsnotify.Rename, Path: p("a")},
+				{Op: fsnotify.Create, Path: p("b")},
 			},
-			[]changeEvent{{Type: "rename", Path: paths.New("/root/b"), OldPath: paths.New("/root/a")}},
+			[]changeEvent{{Type: "rename", Path: p("b"), OldPath: p("a")}},
 		},
 		{
 			"dir rename with contents pairs and drops descendants",
 			[]rawEvent{
-				{Op: fsnotify.Rename, Path: paths.New("/root/py"), IsDir: true},
-				{Op: fsnotify.Create, Path: paths.New("/root/py2"), IsDir: true},
-				{Op: fsnotify.Create, Path: paths.New("/root/py2/main.py")},
+				{Op: fsnotify.Rename, Path: p("py"), IsDir: true},
+				{Op: fsnotify.Create, Path: p("py2"), IsDir: true},
+				{Op: fsnotify.Create, Path: p("py2/main.py")},
 			},
-			[]changeEvent{{Type: "rename", Path: paths.New("/root/py2"), OldPath: paths.New("/root/py"), IsDir: true}},
+			[]changeEvent{{Type: "rename", Path: p("py2"), OldPath: p("py"), IsDir: true}},
 		},
 		{
 			"unpaired delete+create in different dirs stay separate",
 			[]rawEvent{
-				{Op: fsnotify.Remove, Path: paths.New("/root/a")},
-				{Op: fsnotify.Create, Path: paths.New("/root/sub/b")},
+				{Op: fsnotify.Remove, Path: p("a")},
+				{Op: fsnotify.Create, Path: p("sub/b")},
 			},
 			[]changeEvent{
-				{Type: "delete", Path: paths.New("/root/a")},
-				{Type: "create", Path: paths.New("/root/sub/b")},
+				{Type: "delete", Path: p("a")},
+				{Type: "create", Path: p("sub/b")},
 			},
 		},
 	}

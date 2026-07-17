@@ -674,6 +674,7 @@ func TestAppLogs(t *testing.T) {
 			break
 		}
 		require.NoError(t, err)
+		t.Logf("start event: %s %s", event.Event, string(event.Data))
 		if event.Event == "close" {
 			break
 		}

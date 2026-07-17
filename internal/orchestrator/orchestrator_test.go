@@ -531,7 +531,8 @@ func setTestOrchestratorConfig(t *testing.T) config.Configuration {
 
 	// Simulate what the deb postinst does in production: pre-create the data
 	// dirs that would otherwise be shipped and chowned by the package
-	// (AssetsDir and the common examples dir).
+	// (AssetDir and the common examples dir).
+	require.NoError(t, cfg.AssetDir().MkdirAll())
 	require.NoError(t, cfg.ExamplesDirs(platform.Platform{})[0].MkdirAll())
 
 	return cfg

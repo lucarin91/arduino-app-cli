@@ -26,20 +26,22 @@ import (
 	"github.com/arduino/arduino-app-cli/internal/platform"
 )
 
+var unoQPlatform = platform.Platform{BoardName: "unoq"}
+
 func TestCloneApp(t *testing.T) {
 	cfg := setTestOrchestratorConfig(t)
-	idProvider := app.NewAppIDProvider(cfg)
+	idProvider := app.NewAppIDProvider(cfg, unoQPlatform)
 
 	originalAppID := f.Must(idProvider.ParseID("user:original-app"))
 	originalAppPath := originalAppID.ToPath()
-	r, err := CreateApp(t.Context(), CreateAppRequest{Name: "original-app"}, idProvider, cfg)
+	r, err := CreateApp(CreateAppRequest{Name: "original-app"}, idProvider, cfg)
 	require.NoError(t, err)
 	require.Equal(t, originalAppID, r.ID)
 	require.DirExists(t, originalAppPath.String())
 
 	t.Run("valid clone", func(t *testing.T) {
 		t.Run("without name", func(t *testing.T) {
-			resp, err := CloneApp(t.Context(), CloneAppRequest{FromID: originalAppID}, idProvider, cfg)
+			resp, err := CloneApp(CloneAppRequest{FromID: originalAppID}, idProvider, cfg)
 			require.NoError(t, err)
 			require.Equal(t, f.Must(idProvider.ParseID("user:original-app-copy0")), resp.ID)
 			appDir := cfg.AppsDir().Join("original-app-copy0")
@@ -69,7 +71,7 @@ func TestCloneApp(t *testing.T) {
 			}
 		})
 		t.Run("with name", func(t *testing.T) {
-			resp, err := CloneApp(t.Context(), CloneAppRequest{
+			resp, err := CloneApp(CloneAppRequest{
 				FromID: originalAppID,
 				Name:   new("new-name"),
 			}, idProvider, cfg)
@@ -86,7 +88,7 @@ func TestCloneApp(t *testing.T) {
 			require.Equal(t, "new-name", clonedApp.Name)
 		})
 		t.Run("with icon", func(t *testing.T) {
-			resp, err := CloneApp(t.Context(), CloneAppRequest{
+			resp, err := CloneApp(CloneAppRequest{
 				FromID: originalAppID,
 				Name:   new("with-icon"),
 				Icon:   new("🦄"),
@@ -110,7 +112,7 @@ func TestCloneApp(t *testing.T) {
 			require.NoError(t, baseApp.Join("data").MkdirAll())
 			require.NoError(t, baseApp.Join("app.yaml").WriteFile([]byte("name: app-with-cache")))
 
-			resp, err := CloneApp(t.Context(), CloneAppRequest{FromID: f.Must(idProvider.ParseID("user:app-with-cache"))}, idProvider, cfg)
+			resp, err := CloneApp(CloneAppRequest{FromID: f.Must(idProvider.ParseID("user:app-with-cache"))}, idProvider, cfg)
 			require.NoError(t, err)
 			require.Equal(t, f.Must(idProvider.ParseID("user:app-with-cache-copy0")), resp.ID)
 			appDir := resp.ID.ToPath()
@@ -127,17 +129,17 @@ func TestCloneApp(t *testing.T) {
 
 	t.Run("invalid app", func(t *testing.T) {
 		t.Run("not existing origin", func(t *testing.T) {
-			_, err := CloneApp(t.Context(), CloneAppRequest{FromID: f.Must(idProvider.ParseID("user:not-existing"))}, idProvider, cfg)
+			_, err := CloneApp(CloneAppRequest{FromID: f.Must(idProvider.ParseID("user:not-existing"))}, idProvider, cfg)
 			require.ErrorIs(t, err, ErrAppDoesntExists)
 		})
 		t.Run("missing app yaml", func(t *testing.T) {
 			err := cfg.AppsDir().Join("app-without-yaml").Mkdir()
 			require.NoError(t, err)
-			_, err = CloneApp(t.Context(), CloneAppRequest{FromID: f.Must(idProvider.ParseID("user:app-without-yaml"))}, idProvider, cfg)
+			_, err = CloneApp(CloneAppRequest{FromID: f.Must(idProvider.ParseID("user:app-without-yaml"))}, idProvider, cfg)
 			require.ErrorIs(t, err, app.ErrInvalidApp)
 		})
 		t.Run("name already exists", func(t *testing.T) {
-			_, err = CloneApp(t.Context(), CloneAppRequest{
+			_, err = CloneApp(CloneAppRequest{
 				FromID: originalAppID,
 				Name:   new("original-app"),
 			}, idProvider, cfg)
@@ -148,10 +150,10 @@ func TestCloneApp(t *testing.T) {
 
 func TestEditApp(t *testing.T) {
 	cfg := setTestOrchestratorConfig(t)
-	idProvider := app.NewAppIDProvider(cfg)
+	idProvider := app.NewAppIDProvider(cfg, unoQPlatform)
 
 	t.Run("with default", func(t *testing.T) {
-		_, err := CreateApp(t.Context(), CreateAppRequest{Name: "app-default"}, idProvider, cfg)
+		_, err := CreateApp(CreateAppRequest{Name: "app-default"}, idProvider, cfg)
 		require.NoError(t, err)
 		appDir := cfg.AppsDir().Join("app-default")
 
@@ -189,7 +191,7 @@ func TestEditApp(t *testing.T) {
 
 	t.Run("with name", func(t *testing.T) {
 		originalAppName := "original-name"
-		_, err := CreateApp(t.Context(), CreateAppRequest{Name: originalAppName}, idProvider, cfg)
+		_, err := CreateApp(CreateAppRequest{Name: originalAppName}, idProvider, cfg)
 		require.NoError(t, err)
 		appDir := cfg.AppsDir().Join(originalAppName)
 		userApp := f.Must(app.Load(appDir))
@@ -204,7 +206,7 @@ func TestEditApp(t *testing.T) {
 
 		t.Run("already existing name", func(t *testing.T) {
 			existingAppName := "existing-name"
-			_, err := CreateApp(t.Context(), CreateAppRequest{Name: existingAppName}, idProvider, cfg)
+			_, err := CreateApp(CreateAppRequest{Name: existingAppName}, idProvider, cfg)
 			require.NoError(t, err)
 			appDir := cfg.AppsDir().Join(existingAppName)
 			existingApp := f.Must(app.Load(appDir))
@@ -216,7 +218,7 @@ func TestEditApp(t *testing.T) {
 
 	t.Run("with icon and description", func(t *testing.T) {
 		commonAppName := "common-app"
-		_, err := CreateApp(t.Context(), CreateAppRequest{Name: commonAppName}, idProvider, cfg)
+		_, err := CreateApp(CreateAppRequest{Name: commonAppName}, idProvider, cfg)
 		require.NoError(t, err)
 		commonAppDir := cfg.AppsDir().Join(commonAppName)
 		commonApp := f.Must(app.Load(commonAppDir))
@@ -234,7 +236,7 @@ func TestEditApp(t *testing.T) {
 
 func TestListApp(t *testing.T) {
 	cfg := setTestOrchestratorConfig(t)
-	idProvider := app.NewAppIDProvider(cfg)
+	idProvider := app.NewAppIDProvider(cfg, unoQPlatform)
 
 	docker, err := dockerClient.NewClientWithOpts(
 		dockerClient.FromEnv,
@@ -259,7 +261,7 @@ func TestListApp(t *testing.T) {
 			ShowApps:     true,
 			ShowExamples: true,
 			StatusFilter: "",
-		}, idProvider, nil, cfg)
+		}, idProvider, nil, cfg, unoQPlatform)
 		require.NoError(t, err)
 		assert.Empty(t, res.BrokenApps)
 		assert.Empty(t, gCmp.Diff([]AppInfo{
@@ -298,7 +300,7 @@ func TestListApp(t *testing.T) {
 			ShowApps:     true,
 			ShowExamples: false,
 			StatusFilter: "",
-		}, idProvider, nil, cfg)
+		}, idProvider, nil, cfg, unoQPlatform)
 		require.NoError(t, err)
 		assert.Empty(t, res.BrokenApps)
 		assert.Empty(t, gCmp.Diff([]AppInfo{
@@ -328,7 +330,7 @@ func TestListApp(t *testing.T) {
 			ShowApps:     false,
 			ShowExamples: true,
 			StatusFilter: "",
-		}, idProvider, nil, cfg)
+		}, idProvider, nil, cfg, unoQPlatform)
 		require.NoError(t, err)
 		assert.Empty(t, res.BrokenApps)
 		assert.Empty(t, gCmp.Diff([]AppInfo{
@@ -356,7 +358,7 @@ func TestListApp(t *testing.T) {
 
 		res, err := ListApps(t.Context(), dockerCli, ListAppRequest{
 			ShowApps: true,
-		}, idProvider, nil, cfg)
+		}, idProvider, nil, cfg, unoQPlatform)
 		require.NoError(t, err)
 
 		for _, a := range res.Apps {
@@ -387,7 +389,7 @@ func TestListApp(t *testing.T) {
 
 		res, err := ListApps(t.Context(), dockerCli, ListAppRequest{
 			ShowApps: true,
-		}, idProvider, nil, cfg)
+		}, idProvider, nil, cfg, unoQPlatform)
 		require.NoError(t, err)
 		require.Empty(t, res.BrokenApps)
 	})
@@ -395,7 +397,7 @@ func TestListApp(t *testing.T) {
 
 func TestListAppsFiltersByBricksIndex(t *testing.T) {
 	cfg := setTestOrchestratorConfig(t)
-	idProvider := app.NewAppIDProvider(cfg)
+	idProvider := app.NewAppIDProvider(cfg, unoQPlatform)
 
 	docker, err := dockerClient.NewClientWithOpts(
 		dockerClient.FromEnv,
@@ -438,20 +440,20 @@ bricks:
   name: Compatible Brick
   description: A brick compatible with the selected board
 `)
-	require.NoError(t, cfg.AssetsDir().MkdirAll())
-	require.NoError(t, cfg.AssetsDir().Join("bricks-list.yaml").WriteFile(bricksIndexContent))
-	idx, err := bricksindex.Load(platform.GetPlatform(nil), cfg.AssetsDir())
+	require.NoError(t, cfg.AssetDir().MkdirAll())
+	require.NoError(t, cfg.AssetDir().Join("bricks-list.yaml").WriteFile(bricksIndexContent))
+	idx, err := bricksindex.Load(platform.GetPlatform(nil), cfg.AssetDir())
 	require.NoError(t, err)
 
 	t.Run("compatible example is listed", func(t *testing.T) {
-		res, err := ListApps(t.Context(), dockerCli, ListAppRequest{ShowExamples: true}, idProvider, idx, cfg)
+		res, err := ListApps(t.Context(), dockerCli, ListAppRequest{ShowExamples: true}, idProvider, idx, cfg, unoQPlatform)
 		require.NoError(t, err)
 		require.Len(t, res.Apps, 1)
 		assert.Equal(t, compatibleExID, res.Apps[0].ID)
 	})
 
 	t.Run("incompatible example is excluded", func(t *testing.T) {
-		res, err := ListApps(t.Context(), dockerCli, ListAppRequest{ShowExamples: true}, idProvider, idx, cfg)
+		res, err := ListApps(t.Context(), dockerCli, ListAppRequest{ShowExamples: true}, idProvider, idx, cfg, unoQPlatform)
 		require.NoError(t, err)
 		for _, a := range res.Apps {
 			assert.NotEqual(t, incompatibleExID, a.ID, "incompatible example should be filtered out")
@@ -459,14 +461,14 @@ bricks:
 	})
 
 	t.Run("user app with incompatible brick is still listed", func(t *testing.T) {
-		res, err := ListApps(t.Context(), dockerCli, ListAppRequest{ShowApps: true}, idProvider, idx, cfg)
+		res, err := ListApps(t.Context(), dockerCli, ListAppRequest{ShowApps: true}, idProvider, idx, cfg, unoQPlatform)
 		require.NoError(t, err)
 		require.Len(t, res.Apps, 1)
 		assert.Equal(t, userAppID, res.Apps[0].ID)
 	})
 
 	t.Run("nil bricks index disables filtering", func(t *testing.T) {
-		res, err := ListApps(t.Context(), dockerCli, ListAppRequest{ShowExamples: true}, idProvider, nil, cfg)
+		res, err := ListApps(t.Context(), dockerCli, ListAppRequest{ShowExamples: true}, idProvider, nil, cfg, unoQPlatform)
 		require.NoError(t, err)
 		assert.Len(t, res.Apps, 2)
 	})
@@ -474,7 +476,7 @@ bricks:
 
 func TestListAppsLocalBricksCompatibility(t *testing.T) {
 	cfg := setTestOrchestratorConfig(t)
-	idProvider := app.NewAppIDProvider(cfg)
+	idProvider := app.NewAppIDProvider(cfg, unoQPlatform)
 
 	docker, err := dockerClient.NewClientWithOpts(
 		dockerClient.FromEnv,
@@ -504,13 +506,13 @@ func TestListAppsLocalBricksCompatibility(t *testing.T) {
 
 	// Build a bricks index with no built-in bricks (empty)
 	bricksIndexContent := []byte("bricks: []\n")
-	require.NoError(t, cfg.AssetsDir().MkdirAll())
-	require.NoError(t, cfg.AssetsDir().Join("bricks-list.yaml").WriteFile(bricksIndexContent))
-	idx, err := bricksindex.Load(platform.GetPlatform(nil), cfg.AssetsDir())
+	require.NoError(t, cfg.AssetDir().MkdirAll())
+	require.NoError(t, cfg.AssetDir().Join("bricks-list.yaml").WriteFile(bricksIndexContent))
+	idx, err := bricksindex.Load(platform.GetPlatform(nil), cfg.AssetDir())
 	require.NoError(t, err)
 
 	t.Run("example with only local bricks is listed even when index is empty", func(t *testing.T) {
-		res, err := ListApps(t.Context(), dockerCli, ListAppRequest{ShowExamples: true}, idProvider, idx, cfg)
+		res, err := ListApps(t.Context(), dockerCli, ListAppRequest{ShowExamples: true}, idProvider, idx, cfg, unoQPlatform)
 		require.NoError(t, err)
 		require.Len(t, res.Apps, 1)
 		assert.Equal(t, exampleID, res.Apps[0].ID)
@@ -539,14 +541,14 @@ func createApp(
 ) app.ID {
 	t.Helper()
 
-	res, err := CreateApp(t.Context(), CreateAppRequest{
+	res, err := CreateApp(CreateAppRequest{
 		Name: name,
 		Icon: "😃",
 	}, idProvider, cfg)
 	require.NoError(t, err)
 	require.Empty(t, gCmp.Diff(f.Must(idProvider.ParseID("user:"+name)), res.ID))
 	if isExample {
-		newPath := cfg.ExamplesDir().Join(name)
+		newPath := cfg.ExamplesDirs(platform.Platform{})[0].Join(name)
 		err = os.Rename(res.ID.ToPath().String(), newPath.String())
 		require.NoError(t, err)
 		newID, err := idProvider.IDFromPath(newPath)
@@ -560,7 +562,7 @@ func createApp(
 
 func TestGetAppEnvironmentVariablesWithDefaults(t *testing.T) {
 	cfg := setTestOrchestratorConfig(t)
-	idProvider := app.NewAppIDProvider(cfg)
+	idProvider := app.NewAppIDProvider(cfg, unoQPlatform)
 
 	docker, err := dockerClient.NewClientWithOpts(
 		dockerClient.FromEnv,
@@ -595,7 +597,6 @@ bricks:
     \ images and returns the predicted class label, bounding-boxes and confidence\
     \ score.\nBrick is designed to work with pre-trained models provided by framework\
     \ or with custom object detection models trained on Edge Impulse platform. \n"
-  require_model: true
   ports: []
   category: video
   model_name: yolox-object-detection
@@ -607,9 +608,9 @@ bricks:
     default_value: /models/ootb/ei/yolo-x-nano.eim
     description: path to the model file
 `)
-	err = cfg.AssetsDir().Join("bricks-list.yaml").WriteFile(bricksIndexContent)
+	err = cfg.AssetDir().Join("bricks-list.yaml").WriteFile(bricksIndexContent)
 	require.NoError(t, err)
-	bricksIndex, err := bricksindex.Load(platform.GetPlatform(nil), cfg.AssetsDir())
+	bricksIndex, err := bricksindex.Load(platform.GetPlatform(nil), cfg.AssetDir())
 	assert.NoError(t, err)
 
 	modelsIndexContent := []byte(`
@@ -627,13 +628,14 @@ models:
     - id: arduino:object_detection
     - id: arduino:video_object_detection
 `)
-	err = cfg.AssetsDir().Join("models-list.yaml").WriteFile(modelsIndexContent)
+	err = cfg.AssetDir().Join("models-list.yaml").WriteFile(modelsIndexContent)
 	require.NoError(t, err)
-	modelIndex, err := modelsindex.Load(platform.GetPlatform(nil), cfg.AssetsDir(), nil)
+	modelIndex, err := modelsindex.Load(platform.GetPlatform(nil), cfg.AssetDir(), cfg.ModelsDir(), cfg.CustomModelsDir(), nil, config.Configuration{})
 	require.NoError(t, err)
 
-	env := getAppEnvironmentVariables(t.Context(), appDesc, bricksIndex, modelIndex, platform.Platform{})
+	env := getAppEnvironmentVariables(t.Context(), appDesc, bricksIndex, modelIndex, platform.Platform{}, cfg)
 	require.Equal(t, cfg.AppsDir().Join("app1").String(), env["APP_HOME"])
+	require.Equal(t, cfg.ModelsDir().String(), env["MODELS_PATH"])
 	require.Equal(t, "/models/ootb/ei/yolo-x-nano.eim", env["EI_OBJ_DETECTION_MODEL"])
 	require.Equal(t, "/home/arduino/.arduino-bricks/models", env["CUSTOM_MODEL_PATH"])
 	// we ignore HOST_IP since it's dynamic
@@ -641,7 +643,7 @@ models:
 
 func TestGetAppEnvironmentVariablesWithCustomModelOverrides(t *testing.T) {
 	cfg := setTestOrchestratorConfig(t)
-	idProvider := app.NewAppIDProvider(cfg)
+	idProvider := app.NewAppIDProvider(cfg, unoQPlatform)
 
 	docker, err := dockerClient.NewClientWithOpts(
 		dockerClient.FromEnv,
@@ -677,7 +679,6 @@ bricks:
     \ images and returns the predicted class label, bounding-boxes and confidence\
     \ score.\nBrick is designed to work with pre-trained models provided by framework\
     \ or with custom object detection models trained on Edge Impulse platform. \n"
-  require_model: true
   category: video
   model_name: yolox-object-detection
   variables:
@@ -688,9 +689,9 @@ bricks:
     default_value: /models/ootb/ei/yolo-x-nano.eim
     description: path to the model file
 `)
-	err = cfg.AssetsDir().Join("bricks-list.yaml").WriteFile(bricksIndexContent)
+	err = cfg.AssetDir().Join("bricks-list.yaml").WriteFile(bricksIndexContent)
 	require.NoError(t, err)
-	bricksIndex, err := bricksindex.Load(platform.GetPlatform(nil), cfg.AssetsDir())
+	bricksIndex, err := bricksindex.Load(platform.GetPlatform(nil), cfg.AssetDir())
 	assert.NoError(t, err)
 
 	modelsIndexContent := []byte(`
@@ -708,12 +709,12 @@ models:
     - id: arduino:object_detection
     - id: arduino:video_object_detection
 `)
-	err = cfg.AssetsDir().Join("models-list.yaml").WriteFile(modelsIndexContent)
+	err = cfg.AssetDir().Join("models-list.yaml").WriteFile(modelsIndexContent)
 	require.NoError(t, err)
-	modelIndex, err := modelsindex.Load(platform.GetPlatform(nil), cfg.AssetsDir(), nil)
+	modelIndex, err := modelsindex.Load(platform.GetPlatform(nil), cfg.AssetDir(), cfg.ModelsDir(), cfg.CustomModelsDir(), nil, config.Configuration{})
 	require.NoError(t, err)
 
-	env := getAppEnvironmentVariables(t.Context(), appDesc, bricksIndex, modelIndex, platform.Platform{})
+	env := getAppEnvironmentVariables(t.Context(), appDesc, bricksIndex, modelIndex, platform.Platform{}, cfg)
 	require.Equal(t, cfg.AppsDir().Join("app1").String(), env["APP_HOME"])
 	require.Equal(t, "/home/arduino/.arduino-bricks/models/face-det.eim", env["EI_OBJ_DETECTION_MODEL"])
 	require.Equal(t, "/home/arduino/.arduino-bricks/models", env["CUSTOM_MODEL_PATH"])
@@ -722,7 +723,7 @@ models:
 
 func TestGetAppEnvironmentVariablesUsingMultipleBricks(t *testing.T) {
 	cfg := setTestOrchestratorConfig(t)
-	idProvider := app.NewAppIDProvider(cfg)
+	idProvider := app.NewAppIDProvider(cfg, unoQPlatform)
 
 	docker, err := dockerClient.NewClientWithOpts(
 		dockerClient.FromEnv,
@@ -775,9 +776,9 @@ bricks:
         default_value: /default/video/value
 
   `)
-	err = cfg.AssetsDir().Join("bricks-list.yaml").WriteFile(bricksIndexContent)
+	err = cfg.AssetDir().Join("bricks-list.yaml").WriteFile(bricksIndexContent)
 	require.NoError(t, err)
-	bricksIndex, err := bricksindex.Load(platform.GetPlatform(nil), cfg.AssetsDir())
+	bricksIndex, err := bricksindex.Load(platform.GetPlatform(nil), cfg.AssetDir())
 	assert.NoError(t, err)
 
 	modelsIndexContent := []byte(`
@@ -791,12 +792,12 @@ models:
           model_configuration:
             EI_V_OBJ_DETECTION_MODEL: "/models/path/video.eim"
 `)
-	err = cfg.AssetsDir().Join("models-list.yaml").WriteFile(modelsIndexContent)
+	err = cfg.AssetDir().Join("models-list.yaml").WriteFile(modelsIndexContent)
 	require.NoError(t, err)
-	modelIndex, err := modelsindex.Load(platform.GetPlatform(nil), cfg.AssetsDir(), nil)
+	modelIndex, err := modelsindex.Load(platform.GetPlatform(nil), cfg.AssetDir(), cfg.ModelsDir(), cfg.CustomModelsDir(), nil, config.Configuration{})
 	require.NoError(t, err)
 
-	env := getAppEnvironmentVariables(t.Context(), appDesc, bricksIndex, modelIndex, platform.Platform{})
+	env := getAppEnvironmentVariables(t.Context(), appDesc, bricksIndex, modelIndex, platform.Platform{}, cfg)
 	require.Equal(t, "/models/path/obj.eim", env["EI_OBJ_DETECTION_MODEL"])
 	require.Equal(t, "/models/path/video.eim", env["EI_V_OBJ_DETECTION_MODEL"])
 	require.Equal(t, "/default/video/value", env["MY_VIDEO_ENV"])

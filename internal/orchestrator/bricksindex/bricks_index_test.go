@@ -40,11 +40,13 @@ bricks:
     description: description for the first variable
   - name: SECOND_VARIABLE
     description: description for the second variable
-- id: arduino:model_required
-  require_model: true
-- id: arduino:model_required_false
-  require_model: false
-- id: arduino:missing-model-require
+- id: arduino:with-model-name
+  model_name: mobilenet-image-classification
+- id: arduino:with-model-by-boards
+  model_by_boards:
+  - platform: ventunoq
+    model: mobilenet-image-classification
+- id: arduino:missing-model
 - id: arduino:with-hidden-variables
   variables:
     - name: HIDDEN_VARIABLE
@@ -65,7 +67,7 @@ bricks:
 	err := assetDir.Join("bricks-list.yaml").WriteFile([]byte(yamlContent))
 	require.NoError(t, err)
 
-	index, err := Load(platform.GetPlatform(nil), assetDir)
+	index, err := Load(platform.Platform{BoardName: "ventunoq"}, assetDir)
 	require.NoError(t, err)
 
 	brickBasi, found := index.FindBrickByID("arduino:basic")
@@ -94,17 +96,25 @@ bricks:
 	require.Equal(t, "description for the second variable", bWithVariables.Variables[1].Description)
 	require.True(t, bWithVariables.Variables[1].IsRequired())
 
-	bRequireModel, found := index.FindBrickByID("arduino:model_required")
+	bRequireModel, found := index.FindBrickByID("arduino:with-model-name")
 	require.True(t, found)
 	require.True(t, bRequireModel.RequireModel)
 
-	bDb, found := index.FindBrickByID("arduino:model_required_false")
-	require.True(t, found)
-	require.False(t, bDb.RequireModel)
-
-	bNoRequireModel, found := index.FindBrickByID("arduino:missing-model-require")
+	bNoRequireModel, found := index.FindBrickByID("arduino:missing-model")
 	require.True(t, found)
 	require.False(t, bNoRequireModel.RequireModel)
+
+	indexVentuno, err := Load(platform.Platform{BoardName: "ventunoq"}, assetDir)
+	require.NoError(t, err)
+	brickVentuno, found := indexVentuno.FindBrickByID("arduino:with-model-by-boards")
+	require.True(t, found)
+	require.True(t, brickVentuno.RequireModel)
+
+	indexUnoQ, err := Load(platform.Platform{BoardName: "unoq"}, assetDir)
+	require.NoError(t, err)
+	brickUno, found := indexUnoQ.FindBrickByID("arduino:with-model-by-boards")
+	require.True(t, found)
+	require.False(t, brickUno.RequireModel)
 
 	withHidden, found := index.FindBrickByID("arduino:with-hidden-variables")
 	require.True(t, found)
@@ -186,7 +196,6 @@ func TestBricksIndexYAMLFormats(t *testing.T) {
 					Category:                  "",
 					RequiresDisplay:           "",
 					RequireContainer:          false,
-					RequireModel:              false,
 					RequiredDevices:           nil,
 					Variables:                 nil,
 					Ports:                     nil,
@@ -202,7 +211,6 @@ func TestBricksIndexYAMLFormats(t *testing.T) {
   name: Complex Brick
   description: A complex test brick
   category: storage
-  require_model: true
   mount_devices_into_container: true
   model_name: a-complex-model
   required_devices:
@@ -307,10 +315,11 @@ func TestBricksIndexYAMLFormats(t *testing.T) {
 `,
 			expectedBricks: []Brick{
 				{
-					ID:          "arduino:brick_with_model_by_boards",
-					Name:        "Brick With Model By Boards",
-					Description: "A brick with model_by_boards",
-					ModelName:   "default-model",
+					ID:           "arduino:brick_with_model_by_boards",
+					Name:         "Brick With Model By Boards",
+					Description:  "A brick with model_by_boards",
+					ModelName:    "default-model",
+					RequireModel: true,
 					ModelByBoard: []ModelsBoard{
 						{Platform: "ventunoq", Model: "ventunoq-model"},
 						{Platform: "portenta", Model: "portenta-model"},
@@ -747,68 +756,63 @@ func TestRequiresServicesUnmarshalYAML(t *testing.T) {
 	}
 }
 
-func TestGetModelNameByBoard(t *testing.T) {
+func TestLoadResolvesModelNameByBoard(t *testing.T) {
+	yamlContent := `bricks:
+- id: arduino:brick-a
+  name: Brick A
+  model_name: default-model
+  model_by_boards:
+  - platform: ventunoq
+    model: ventunoq-model
+  - platform: portenta
+    model: portenta-model
+- id: arduino:brick-b
+  name: Brick B
+  model_name: only-default
+`
+
 	tests := []struct {
-		name      string
-		brick     Brick
-		boardName string
-		want      string
+		name            string
+		boardName       string
+		wantBrickAModel string
+		wantBrickBModel string
 	}{
 		{
-			name: "returns model for matching platform",
-			brick: Brick{
-				ModelName: "default-model",
-				ModelByBoard: []ModelsBoard{
-					{Platform: "ventunoq", Model: "ventunoq-model"},
-					{Platform: "portenta", Model: "portenta-model"},
-				},
-			},
-			boardName: "ventunoq",
-			want:      "ventunoq-model",
+			name:            "matching platform overrides default",
+			boardName:       "ventunoq",
+			wantBrickAModel: "ventunoq-model",
+			wantBrickBModel: "only-default",
 		},
 		{
-			name: "falls back to default model name when board not in list",
-			brick: Brick{
-				ModelName: "default-model",
-				ModelByBoard: []ModelsBoard{
-					{Platform: "ventunoq", Model: "ventunoq-model"},
-				},
-			},
-			boardName: "portenta",
-			want:      "default-model",
+			name:            "board not in list keeps default",
+			boardName:       "opta",
+			wantBrickAModel: "default-model",
+			wantBrickBModel: "only-default",
 		},
 		{
-			name: "empty board name returns default model name",
-			brick: Brick{
-				ModelName: "default-model",
-				ModelByBoard: []ModelsBoard{
-					{Platform: "ventunoq", Model: "ventunoq-model"},
-				},
-			},
-			boardName: "",
-			want:      "default-model",
-		},
-		{
-			name: "empty model_by_boards returns default model name",
-			brick: Brick{
-				ModelName:    "default-model",
-				ModelByBoard: nil,
-			},
-			boardName: "ventunoq",
-			want:      "default-model",
-		},
-		{
-			name:      "all empty returns empty string",
-			brick:     Brick{},
-			boardName: "ventunoq",
-			want:      "",
+			name:            "empty board keeps default",
+			boardName:       "",
+			wantBrickAModel: "default-model",
+			wantBrickBModel: "only-default",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := tt.brick.GetModelNameByBoard(tt.boardName)
-			assert.Equal(t, tt.want, got)
+			tempDir := t.TempDir()
+			brickIndex := paths.New(tempDir, "bricks-list.yaml")
+			require.NoError(t, os.WriteFile(brickIndex.String(), []byte(yamlContent), 0600))
+
+			index, err := Load(platform.Platform{BoardName: tt.boardName}, paths.New(tempDir))
+			require.NoError(t, err)
+
+			brickA, found := index.FindBrickByID("arduino:brick-a")
+			require.True(t, found)
+			assert.Equal(t, tt.wantBrickAModel, brickA.ModelName)
+
+			brickB, found := index.FindBrickByID("arduino:brick-b")
+			require.True(t, found)
+			assert.Equal(t, tt.wantBrickBModel, brickB.ModelName)
 		})
 	}
 }

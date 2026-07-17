@@ -36,6 +36,7 @@ import (
 	"github.com/arduino/arduino-app-cli/internal/orchestrator/app"
 	"github.com/arduino/arduino-app-cli/internal/orchestrator/bricksindex"
 	"github.com/arduino/arduino-app-cli/internal/orchestrator/config"
+	"github.com/arduino/arduino-app-cli/internal/orchestrator/modelsindex"
 	"github.com/arduino/arduino-app-cli/internal/orchestrator/servicesindex"
 	"github.com/arduino/arduino-app-cli/internal/platform"
 )
@@ -67,7 +68,7 @@ func (o SystemInitOptions) Validate() error {
 // SystemInit pulls all the docker images needed for the current version of the software to run and the
 // sketch libraries used in the example apps. Can be used to pre-install docker images/libraries on an
 // empty system, or to update all the docker images/libraries that need it.
-func SystemInit(ctx context.Context, cfg config.Configuration, platform platform.Platform, bricksindex *bricksindex.BricksIndex, servicesindex *servicesindex.ServicesIndex, docker *command.DockerCli, options SystemInitOptions) error {
+func SystemInit(ctx context.Context, cfg config.Configuration, platform platform.Platform, bricksindex *bricksindex.BricksIndex, servicesindex *servicesindex.ServicesIndex, modelsIndex *modelsindex.ModelsIndex, docker *command.DockerCli, options SystemInitOptions) error {
 	if err := options.Validate(); err != nil {
 		return err
 	}
@@ -111,7 +112,7 @@ func SystemInit(ctx context.Context, cfg config.Configuration, platform platform
 
 	if downloadDockerImages {
 		// TODO: use progressCB instead of stdout
-		if err := downloadSupportedImages(ctx, cfg, bricksindex, servicesindex, docker, stdout); err != nil {
+		if err := downloadSupportedImages(ctx, cfg, bricksindex, servicesindex, modelsIndex, docker, stdout); err != nil {
 			return fmt.Errorf("failed to download container images used in examples: %w", err)
 		}
 	}
@@ -119,14 +120,18 @@ func SystemInit(ctx context.Context, cfg config.Configuration, platform platform
 	return nil
 }
 
-func downloadSupportedImages(ctx context.Context, cfg config.Configuration, brickindex *bricksindex.BricksIndex, servicesindex *servicesindex.ServicesIndex, docker *command.DockerCli, stdout io.Writer) error {
+func downloadSupportedImages(ctx context.Context, cfg config.Configuration, brickindex *bricksindex.BricksIndex, servicesindex *servicesindex.ServicesIndex, modelsIndex *modelsindex.ModelsIndex, docker *command.DockerCli, stdout io.Writer) error {
 	fmt.Fprintf(stdout, "Pulling the latest docker images ...\n")
 	imagesToPreinstall := []string{cfg.PythonImage}
 	brickImages, err := getAllSupportedBrickImages(brickindex, servicesindex)
 	if err != nil {
 		return err
 	}
+
+	handlerImages := modelsIndex.Handlers.GetDockerImages()
+
 	imagesToPreinstall = append(imagesToPreinstall, brickImages...)
+	imagesToPreinstall = append(imagesToPreinstall, handlerImages...)
 
 	pulledImages, err := listImagesAlreadyPulled(ctx, docker.Client())
 	if err != nil {
@@ -146,7 +151,7 @@ func downloadSupportedImages(ctx context.Context, cfg config.Configuration, bric
 
 		// Check that there is enough disk space for the additional layers needed by the image.
 		previousExistingImage := GetHighestVersion(image, pulledImages)
-		if toDownload, err := GetBytesToDownload(previousExistingImage, image, stdout); err != nil {
+		if toDownload, err := GetBytesToDownload(previousExistingImage, image); err != nil {
 			// In case of errors getting the size to download, proceed anyway.
 			slog.Warn("Unable to get the new image layers size", "image", image, "error", err)
 		} else if uint64(float64(toDownload)*2.5) > freeSpace {
@@ -237,7 +242,13 @@ func isTemporaryDockerError(err error) bool {
 }
 
 // List of prefixes used to identify current or past Arduino images. Used both during 'system init' and during cleanup.
-var imagePrefixes = []string{"ghcr.io/bcmi-labs/", "public.ecr.aws/arduino/", "ghcr.io/arduino/", "influxdb"}
+var imagePrefixes = []string{
+	"ghcr.io/bcmi-labs/",
+	"public.ecr.aws/arduino/",
+	"ghcr.io/arduino/",
+	"influxdb",
+	"artifacts.codelinaro.org/iot-solutions-microservices/",
+}
 
 // Lists all the local docker images that could have been, or are downloaded by Arduino.
 // This is used both to avoid pulling already existing images and cleaning up unused old Arduino images.
@@ -250,10 +261,10 @@ func listImagesAlreadyPulled(ctx context.Context, docker dockerClient.APIClient)
 	result := make([]string, 0, len(images))
 	for _, image := range images {
 		for _, tag := range image.RepoTags {
-			for _, prefix := range imagePrefixes {
-				if strings.HasPrefix(tag, prefix) {
-					result = append(result, tag)
-				}
+			if slices.ContainsFunc(imagePrefixes, func(p string) bool {
+				return strings.HasPrefix(tag, p)
+			}) {
+				result = append(result, tag)
 			}
 		}
 	}
@@ -264,15 +275,13 @@ func listImagesAlreadyPulled(ctx context.Context, docker dockerClient.APIClient)
 func getAllSupportedBrickImages(bricksIndex *bricksindex.BricksIndex, servicesIndex *servicesindex.ServicesIndex) ([]string, error) {
 	var result []string
 	for _, brick := range bricksIndex.ListBricks() {
-		composeFile, ok := brick.GetComposeFile()
-		if !ok {
-			continue
+		if composeFile, ok := brick.GetComposeFile(); ok {
+			images, err := extractImagesFromCompose(composeFile)
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, images...)
 		}
-		images, err := extractImagesFromCompose(composeFile)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, images...)
 
 		for _, r := range brick.RequiresServices {
 			service, ok := servicesIndex.FindServiceByID(r.ID)
@@ -303,19 +312,23 @@ func extractImagesFromCompose(composeFile *paths.Path) ([]string, error) {
 	prj, err := loader.LoadWithContext(
 		context.Background(),
 		types.ConfigDetails{
+			WorkingDir:  composeFile.Parent().String(),
 			ConfigFiles: []types.ConfigFile{{Content: content}},
 			Environment: types.NewMapping(os.Environ()),
 		},
 		func(o *loader.Options) { o.SetProjectName("default", false) },
+		loader.WithSkipValidation, // avoid os.Getwd() in schema validation, which fails when CWD is missing (e.g. during .deb postinst)
 	)
 	if err != nil {
 		return nil, err
 	}
 	for _, v := range prj.Services {
-		for _, prefix := range imagePrefixes {
-			if strings.HasPrefix(v.Image, prefix) {
-				result = append(result, v.Image)
-			}
+		if slices.ContainsFunc(imagePrefixes, func(p string) bool {
+			return strings.HasPrefix(v.Image, p)
+		}) {
+			result = append(result, v.Image)
+		} else {
+			slog.Warn("skipping image that does not match known prefixes", "image", v.Image, "prefixes", imagePrefixes)
 		}
 	}
 	return result, nil
@@ -335,7 +348,7 @@ func (s SystemCleanupResult) IsEmpty() bool {
 
 // SystemCleanup removes dangling containers and unused images.
 // Also running apps are stopped and removed.
-func SystemCleanup(ctx context.Context, cfg config.Configuration, bricksindex *bricksindex.BricksIndex, servicesindex *servicesindex.ServicesIndex, docker command.Cli, platform platform.Platform) (SystemCleanupResult, error) {
+func SystemCleanup(ctx context.Context, cfg config.Configuration, bricksindex *bricksindex.BricksIndex, servicesindex *servicesindex.ServicesIndex, modelsIndex *modelsindex.ModelsIndex, docker command.Cli, platform platform.Platform) (SystemCleanupResult, error) {
 	var result SystemCleanupResult
 
 	// Remove running app
@@ -365,17 +378,22 @@ func SystemCleanup(ctx context.Context, cfg config.Configuration, bricksindex *b
 	}
 
 	// Remove unused images
-	containersMustStay, err := getRequiredImages(cfg, bricksindex, servicesindex)
+	imagesMustStay, err := getRequiredImages(cfg, bricksindex, servicesindex, modelsIndex)
 	if err != nil {
 		return result, err
 	}
+	slog.Debug("images that must stay", "imagesMustStay", imagesMustStay)
+
 	allImages, err := listImagesAlreadyPulled(ctx, docker.Client())
 	if err != nil {
 		return result, err
 	}
+	slog.Debug("all images already pulled", "allImages", allImages)
+
 	imagesToRemove := slices.DeleteFunc(allImages, func(v string) bool {
-		return slices.Contains(containersMustStay, v)
+		return slices.Contains(imagesMustStay, v)
 	})
+	slog.Info("images to remove", "imagesToRemove", imagesToRemove)
 
 	for _, image := range imagesToRemove {
 		imageSize, err := removeImage(ctx, docker.Client(), image)
@@ -409,15 +427,18 @@ func removeImage(ctx context.Context, docker dockerClient.APIClient, imageName s
 }
 
 // images required by the system
-func getRequiredImages(cfg config.Configuration, bricksindex *bricksindex.BricksIndex, servicesindex *servicesindex.ServicesIndex) ([]string, error) {
+func getRequiredImages(cfg config.Configuration, bricksindex *bricksindex.BricksIndex, servicesindex *servicesindex.ServicesIndex, modelsIndex *modelsindex.ModelsIndex) ([]string, error) {
 	bricksContainers, err := getAllSupportedBrickImages(bricksindex, servicesindex)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse bricks runner images: %w", err)
 	}
 
-	requiredImages := make([]string, 0, 1+len(bricksContainers))
+	handlerImages := modelsIndex.Handlers.GetDockerImages()
+
+	requiredImages := make([]string, 0, 1+len(bricksContainers)+len(handlerImages))
 	requiredImages = append(requiredImages, cfg.PythonImage)
 	requiredImages = append(requiredImages, bricksContainers...)
+	requiredImages = append(requiredImages, handlerImages...)
 
 	return requiredImages, nil
 }
@@ -572,7 +593,8 @@ func downloadLibsAndPlatformsUsedInExamples(ctx context.Context, cfg config.Conf
 	}
 
 	// Get a list of example apps
-	exampleAppsPath, err := app.FindAppsInFolder(cfg.ExamplesDir())
+	pathsToExplore := cfg.ExamplesDirs(platform)
+	exampleAppsPath, err := app.FindAppsInFolders(pathsToExplore)
 	if err != nil {
 		return err
 	}

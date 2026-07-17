@@ -47,7 +47,7 @@ func NewService(
 	}
 }
 
-func (s *Service) List() (BrickListResult, error) {
+func (s *Service) List() BrickListResult {
 	res := BrickListResult{Bricks: make([]BrickListItem, len(s.bricksIndex.ListBricks()))}
 	for i, brick := range s.bricksIndex.ListBricks() {
 		res.Bricks[i] = BrickListItem{
@@ -60,10 +60,10 @@ func (s *Service) List() (BrickListResult, error) {
 			RequireModel: brick.RequireModel,
 		}
 	}
-	return res, nil
+	return res
 }
 
-func (s *Service) AppBrickInstancesList(a *app.ArduinoApp, platform platform.Platform) (AppBrickInstancesResult, error) {
+func (s *Service) AppBrickInstancesList(a *app.ArduinoApp) AppBrickInstancesResult {
 	res := AppBrickInstancesResult{BrickInstances: make([]BrickInstance, len(a.Descriptor.Bricks))}
 	for i, brickInstance := range a.Descriptor.Bricks {
 		brick, found := s.bricksIndex.WithAppBricks(a.LocalBricks).FindBrickByID(brickInstance.ID)
@@ -85,20 +85,20 @@ func (s *Service) AppBrickInstancesList(a *app.ArduinoApp, platform platform.Pla
 			Category:        brick.Category,
 			Status:          "installed",
 			RequireModel:    brick.RequireModel,
-			ModelID:         cmp.Or(brickInstance.Model, brick.GetModelNameByBoard(platform.BoardName)),
+			ModelID:         cmp.Or(brickInstance.Model, brick.ModelName),
 			Variables:       variablesMap,
 			ConfigVariables: configVariables,
-			CompatibleModels: f.Map(s.modelsIndex.GetModelsByBrick(brick.ID), func(m modelsindex.AIModel) AIModel {
+			CompatibleModels: f.Map(s.modelsIndex.GetModelsByBrick(brick.ID), func(m modelsindex.AIModelLite) AIModel {
 				return AIModel{
 					ID:          m.ID,
 					Name:        m.Name,
-					Description: m.ModuleDescription,
+					Description: m.Description,
 				}
 			}),
 		}
 
 	}
-	return res, nil
+	return res
 }
 
 func (s *Service) AppBrickInstanceDetails(a *app.ArduinoApp, brickID string) (BrickInstance, error) {
@@ -132,11 +132,12 @@ func (s *Service) AppBrickInstanceDetails(a *app.ArduinoApp, brickID string) (Br
 		Variables:       variables,
 		ConfigVariables: configVariables,
 		ModelID:         cmp.Or(a.Descriptor.Bricks[brickIndex].Model, brick.ModelName),
-		CompatibleModels: f.Map(s.modelsIndex.GetModelsByBrick(brick.ID), func(m modelsindex.AIModel) AIModel {
+		CompatibleModels: f.Map(s.modelsIndex.GetModelsByBrick(brick.ID), func(m modelsindex.AIModelLite) AIModel {
 			return AIModel{
-				ID:          m.ID,
-				Name:        m.Name,
-				Description: m.ModuleDescription,
+				ID:   m.ID,
+				Name: m.Name,
+				// TODO: deprecated field, remove in future versions
+				Description: m.Description,
 			}
 		}),
 		Readme: readme,
@@ -173,7 +174,7 @@ func getInstanceBrickConfigVariableDetails(
 }
 
 func (s *Service) BricksDetails(id string, idProvider *app.IDProvider,
-	cfg config.Configuration) (BrickDetailsResult, error) {
+	cfg config.Configuration, platform platform.Platform) (BrickDetailsResult, error) {
 	brick, found := s.bricksIndex.FindBrickByID(id)
 	if !found {
 		return BrickDetailsResult{}, ErrBrickNotFound
@@ -201,12 +202,13 @@ func (s *Service) BricksDetails(id string, idProvider *app.IDProvider,
 		}
 	})
 
-	usedByApps, err := getUsedByApps(cfg, brick.ID, idProvider)
+	usedByApps, err := getUsedByApps(cfg, brick.ID, idProvider, platform)
 	if err != nil {
 		slog.Warn("unable to get used by apps for brick", "brickID", brick.ID, "error", err.Error())
 	}
 
 	variables, configVariables := getBrickConfigVariableDetails(brick)
+
 	return BrickDetailsResult{
 		ID:           id,
 		Name:         brick.Name,
@@ -220,11 +222,11 @@ func (s *Service) BricksDetails(id string, idProvider *app.IDProvider,
 		ApiDocsPath:  apiDocsPath,
 		CodeExamples: codeExamples,
 		UsedByApps:   usedByApps,
-		CompatibleModels: f.Map(s.modelsIndex.GetModelsByBrick(brick.ID), func(m modelsindex.AIModel) AIModel {
+		CompatibleModels: f.Map(s.modelsIndex.GetModelsByBrick(brick.ID), func(m modelsindex.AIModelLite) AIModel {
 			return AIModel{
 				ID:          m.ID,
 				Name:        m.Name,
-				Description: m.ModuleDescription,
+				Description: m.Description,
 			}
 		}),
 		ConfigVariables: configVariables,
@@ -257,19 +259,14 @@ func getBrickConfigVariableDetails(
 	return variablesMap, variableDetails
 }
 
-func getUsedByApps(cfg config.Configuration, brickId string, idProvider *app.IDProvider) ([]AppReference, error) {
-	var appPaths paths.PathList
-
+func getUsedByApps(cfg config.Configuration, brickId string, idProvider *app.IDProvider, platform platform.Platform) ([]AppReference, error) {
 	pathsToExplore := paths.NewPathList()
-	pathsToExplore.Add(cfg.ExamplesDir())
+	pathsToExplore.AddAll(cfg.ExamplesDirs(platform))
 	pathsToExplore.Add(cfg.AppsDir())
-	for _, p := range pathsToExplore {
-		res, err := app.FindAppsInFolder(p)
-		if err != nil {
-			slog.Error("unable to list apps", slog.String("error", err.Error()))
-			return []AppReference{}, err
-		}
-		appPaths.AddAllMissing(res)
+	appPaths, err := app.FindAppsInFolders(pathsToExplore)
+	if err != nil {
+		slog.Error("unable to list apps", slog.String("error", err.Error()))
+		return []AppReference{}, err
 	}
 
 	usedByApps := []AppReference{}
@@ -346,12 +343,10 @@ func (s *Service) BrickCreate(
 	brickInstance.ID = req.ID
 
 	if req.Model != nil {
-		models := s.modelsIndex.GetModelsByBrick(brickInstance.ID)
-		idx := slices.IndexFunc(models, func(m modelsindex.AIModel) bool { return m.ID == *req.Model })
-		if idx == -1 {
+		if !s.modelsIndex.IsModelSupportedByBrick(*req.Model, req.ID) {
 			return fmt.Errorf("model %s does not exsist", *req.Model)
 		}
-		brickInstance.Model = models[idx].ID
+		brickInstance.Model = *req.Model
 	}
 	brickInstance.Variables = req.Variables
 
@@ -389,10 +384,8 @@ func (s *Service) BrickUpdate(
 	brickModel := appCurrent.Descriptor.Bricks[brickPosition].Model
 
 	if req.Model != nil && *req.Model != brickModel {
-		models := s.modelsIndex.GetModelsByBrick(req.ID)
-		idx := slices.IndexFunc(models, func(m modelsindex.AIModel) bool { return m.ID == *req.Model })
-		if idx == -1 {
-			return fmt.Errorf("model %s does not exsist", *req.Model)
+		if !s.modelsIndex.IsModelSupportedByBrick(*req.Model, req.ID) {
+			return fmt.Errorf("model %s is not supported by brick %q", *req.Model, req.ID)
 		}
 		brickModel = *req.Model
 	}

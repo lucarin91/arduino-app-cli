@@ -23,7 +23,6 @@ import (
 	"github.com/arduino/arduino-app-cli/internal/orchestrator/modelsindex"
 	"github.com/arduino/arduino-app-cli/internal/orchestrator/servicesindex"
 	"github.com/arduino/arduino-app-cli/internal/platform"
-	"github.com/arduino/arduino-app-cli/internal/store"
 )
 
 var globalConfig config.Configuration
@@ -34,15 +33,15 @@ func Init(cfg config.Configuration) {
 
 var (
 	GetBricksIndex = sync.OnceValue(func() *bricksindex.BricksIndex {
-		return f.Must(bricksindex.Load(GetPlatform(), GetStaticStore().GetAssetsFolder()))
+		return f.Must(bricksindex.Load(GetPlatform(), globalConfig.AssetDir()))
 	})
 
 	GetModelsIndex = sync.OnceValue(func() *modelsindex.ModelsIndex {
-		return f.Must(modelsindex.Load(GetPlatform(), GetStaticStore().GetAssetsFolder(), globalConfig.CustomModelsDir()))
+		return f.Must(modelsindex.Load(GetPlatform(), globalConfig.AssetDir(), globalConfig.ModelsDir(), globalConfig.CustomModelsDir(), GetDockerClient().Client(), globalConfig))
 	})
 
 	GetServicesIndex = sync.OnceValue(func() *servicesindex.ServicesIndex {
-		return f.Must(servicesindex.Load(GetPlatform(), GetStaticStore().GetServicesFolder()))
+		return f.Must(servicesindex.Load(GetPlatform(), globalConfig.AssetDir().Join("services")))
 	})
 
 	GetProvisioner = sync.OnceValue(func() *orchestrator.Provision {
@@ -76,10 +75,6 @@ var (
 		return nil
 	}
 
-	GetStaticStore = sync.OnceValue(func() *store.StaticStore {
-		return store.NewStaticStore(globalConfig.AssetsDir().Join(globalConfig.UsedPythonImageTag).String())
-	})
-
 	GetBrickService = sync.OnceValue(func() *bricks.Service {
 		return bricks.NewService(
 			GetModelsIndex(),
@@ -88,7 +83,7 @@ var (
 	})
 
 	GetAppIDProvider = sync.OnceValue(func() *app.IDProvider {
-		return app.NewAppIDProvider(globalConfig)
+		return app.NewAppIDProvider(globalConfig, GetPlatform())
 	})
 
 	GetPlatform = sync.OnceValue(func() platform.Platform {

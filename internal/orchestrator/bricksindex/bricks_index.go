@@ -6,6 +6,7 @@
 package bricksindex
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -17,6 +18,8 @@ import (
 	"strings"
 
 	"github.com/arduino/go-paths-helper"
+	"github.com/compose-spec/compose-go/v2/loader"
+	"github.com/compose-spec/compose-go/v2/types"
 	yaml "github.com/goccy/go-yaml"
 	"github.com/goccy/go-yaml/ast"
 
@@ -118,7 +121,6 @@ type Brick struct {
 	RequiresDisplay string   `yaml:"requires_display,omitempty"`
 	// Deprecated : the field `require_container` is deprecated, you can remove it from the brick config. It will be ignored if present.
 	RequireContainer            bool                      `yaml:"require_container"` // Deprecated
-	RequireModel                bool                      `yaml:"require_model"`
 	Variables                   []BrickVariable           `yaml:"variables,omitempty"`
 	Ports                       []string                  `yaml:"ports,omitempty"`
 	ModelName                   string                    `yaml:"model_name,omitempty"`
@@ -135,6 +137,7 @@ type Brick struct {
 	ReadmeFile   *paths.Path `yaml:"-"` // README.md file path, optional
 	ExamplesPath *paths.Path `yaml:"-"` // code examples folder path, optional
 	DocsAPIPath  *paths.Path `yaml:"-"` // API docs file path, optional
+	RequireModel bool        `yaml:"-"`
 
 	containerPorts []string `yaml:"-"` // Ports extracted from the compose file, optional
 }
@@ -206,18 +209,13 @@ func (b Brick) GetPorts() []string {
 	return slices.Compact(ports)
 }
 
-func (b Brick) GetModelNameByBoard(boardName string) string {
-	defaultModelName := b.ModelName
-	modelsBoard := b.ModelByBoard
-	if boardName != "" {
-		idx := slices.IndexFunc(modelsBoard, func(mb ModelsBoard) bool {
-			return mb.Platform == boardName
-		})
-		if idx != -1 {
-			return modelsBoard[idx].Model
+func (b Brick) isAiBrick(platform platform.Platform) bool {
+	for _, mb := range b.ModelByBoard {
+		if mb.Platform == platform.BoardName && mb.Model != "" {
+			return true
 		}
 	}
-	return defaultModelName
+	return b.ModelName != ""
 }
 
 type BrickInstance struct {
@@ -285,6 +283,7 @@ func Load(platform platform.Platform, path *paths.Path) (*BricksIndex, error) {
 		yamlIndex.Bricks[i].ReadmeFile = path.Join("docs", namespace, brickName, "README.md")
 		yamlIndex.Bricks[i].ExamplesPath = path.Join("examples", namespace, brickName)
 		yamlIndex.Bricks[i].DocsAPIPath = path.Join("api-docs", namespace, "app_bricks", brickName, "API.md")
+		yamlIndex.Bricks[i].RequireModel = yamlIndex.Bricks[i].isAiBrick(platform)
 
 		// Load main compose file and, if present, platform-specific compose files
 		var (
@@ -304,6 +303,16 @@ func Load(platform platform.Platform, path *paths.Path) (*BricksIndex, error) {
 				yamlIndex.Bricks[i].containerPorts = ports
 			} else {
 				slog.Warn("cannot extract ports from compose file, skipping", "brick_id", yamlIndex.Bricks[i].ID, "error", err)
+			}
+		}
+
+		// Resolve the board-specific model name, if any.
+		if platform.BoardName != "" {
+			idx := slices.IndexFunc(yamlIndex.Bricks[i].ModelByBoard, func(mb ModelsBoard) bool {
+				return mb.Platform == platform.BoardName
+			})
+			if idx != -1 {
+				yamlIndex.Bricks[i].ModelName = yamlIndex.Bricks[i].ModelByBoard[idx].Model
 			}
 		}
 	}
@@ -328,34 +337,33 @@ func parseBrickID(brickID string) (namespace, name string, err error) {
 }
 
 func extractPortsFromComposeFile(composeFile *paths.Path) ([]string, error) {
-	var ports []string
-
-	f, err := composeFile.Open()
+	content, err := composeFile.ReadFile()
 	if err != nil {
-		return ports, err
-	}
-	defer f.Close()
-
-	var compose struct {
-		Services map[string]struct {
-			Ports []string `yaml:"ports,omitempty"`
-		} `yaml:"services"`
-	}
-	if err := yaml.NewDecoder(f).Decode(&compose); err != nil {
-		return ports, err
+		return nil, err
 	}
 
-	for _, service := range compose.Services {
-		for _, portStr := range service.Ports {
-			if strings.Contains(portStr, ":") {
-				parts := strings.Split(portStr, ":")
-				hostPort := parts[len(parts)-2] // Extract the host port (the one before the last colon)
-				ports = append(ports, hostPort)
+	prj, err := loader.LoadWithContext(
+		context.Background(),
+		types.ConfigDetails{
+			ConfigFiles: []types.ConfigFile{{Content: content}},
+			Environment: types.NewMapping(os.Environ()),
+		},
+		func(o *loader.Options) { o.SetProjectName("default", false); o.SkipConsistencyCheck = true },
+		loader.WithSkipValidation,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	var ports []string
+	for _, svc := range prj.Services {
+		for _, p := range svc.Ports {
+			if p.Published != "" {
+				ports = append(ports, p.Published)
 			} else {
-				ports = append(ports, portStr)
+				ports = append(ports, fmt.Sprintf("%d", p.Target))
 			}
 		}
 	}
-
 	return ports, nil
 }

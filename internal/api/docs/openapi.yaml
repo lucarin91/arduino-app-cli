@@ -4,7 +4,7 @@ info:
   version: 0.1.0
 servers:
 - description: local server
-  url: http://localhost:6060
+  url: http://localhost:8800
 tags:
 - name: Application
 - name: Brick
@@ -1434,6 +1434,7 @@ components:
     AIModel:
       properties:
         description:
+          description: 'Deprecated: This field is kept for backward compatibility.'
           type: string
         id:
           type: string
@@ -1449,10 +1450,6 @@ components:
           type: array
         description:
           type: string
-        disk_usage:
-          minimum: 0
-          nullable: true
-          type: integer
         id:
           type: string
         is_builtin:
@@ -1465,6 +1462,12 @@ components:
           type: string
         runner:
           type: string
+        size:
+          minimum: 0
+          nullable: true
+          type: integer
+        status:
+          $ref: '#/components/schemas/ModelStatus'
       type: object
     AIModelsListResult:
       properties:
@@ -1903,6 +1906,13 @@ components:
         id:
           type: string
       type: object
+    ModelStatus:
+      description: Model status
+      enum:
+      - installed
+      - not-installed
+      type: string
+      uniqueItems: true
     PackageType:
       description: Package type
       enum:

@@ -24,6 +24,7 @@ import (
 	"github.com/arduino/arduino-app-cli/internal/orchestrator"
 	"github.com/arduino/arduino-app-cli/internal/orchestrator/app"
 	"github.com/arduino/arduino-app-cli/internal/orchestrator/bricks"
+	"github.com/arduino/arduino-app-cli/internal/orchestrator/modelsindex"
 	"github.com/arduino/arduino-app-cli/internal/update"
 )
 
@@ -48,7 +49,7 @@ func NewOpenApiGenerator(version string) *Generator {
 	reflector := openapi3.NewReflector()
 	reflector.Spec.Info.WithTitle("Arduino-App-Cli").WithVersion(version)
 	reflector.Spec.Servers = append(reflector.Spec.Servers, openapi3.Server{
-		URL:         "http://localhost:6060",
+		URL:         "http://localhost:8800",
 		Description: new("local server"),
 	})
 
@@ -75,6 +76,18 @@ func NewOpenApiGenerator(version string) *Generator {
 				Type:        new(openapi3.SchemaTypeString),
 				Description: new("Package type"),
 				ReflectType: reflect.TypeOf(update.PackageType("")),
+			},
+		},
+	)
+	reflector.Spec.Components.Schemas.WithMapOfSchemaOrRefValuesItem(
+		"ModelStatus",
+		openapi3.SchemaOrRef{
+			Schema: &openapi3.Schema{
+				UniqueItems: new(true),
+				Enum:        f.Map(modelsindex.ModelStatus("").AllowedStatuses(), func(v modelsindex.ModelStatus) any { return v }),
+				Type:        new(openapi3.SchemaTypeString),
+				Description: new("Model status"),
+				ReflectType: reflect.TypeOf(modelsindex.ModelStatus("")),
 			},
 		},
 	)
@@ -259,6 +272,10 @@ func NewOpenApiGenerator(version string) *Generator {
 
 			if params.Value.Type() == reflect.TypeOf(update.PackageType("")) {
 				params.Schema.WithRef("#/components/schemas/PackageType")
+				return true, nil
+			}
+			if params.Value.Type() == reflect.TypeOf(modelsindex.ModelStatus("")) {
+				params.Schema.WithRef("#/components/schemas/ModelStatus")
 				return true, nil
 			}
 			return false, nil

@@ -154,8 +154,8 @@ func NewFromEnv() (Configuration, error) {
 // verifies the shared folders under DataDir are present.
 func (c *Configuration) EnsureFolders() error {
 	required := []*paths.Path{
-		c.ModelsDir(),
-		c.AssetsDir(),
+		c.modelsDir,
+		c.assetDir,
 	}
 	for _, d := range required {
 		if d.NotExist() {

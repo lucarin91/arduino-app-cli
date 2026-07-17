@@ -304,7 +304,8 @@ type ConfigDirectories struct {
 
 // ConfigResponse defines model for ConfigResponse.
 type ConfigResponse struct {
-	Directories *ConfigDirectories `json:"directories,omitempty"`
+	Directories  *ConfigDirectories `json:"directories,omitempty"`
+	PythonRunner *string            `json:"python_runner,omitempty"`
 }
 
 // CreateAppRequest defines model for CreateAppRequest.
@@ -414,6 +415,13 @@ type Port struct {
 // PropertyKeysResponse defines model for PropertyKeysResponse.
 type PropertyKeysResponse struct {
 	Keys *[]string `json:"keys,omitempty"`
+}
+
+// ResponseLogs defines model for ResponseLogs.
+type ResponseLogs struct {
+	ContainerName *string `json:"container_name,omitempty"`
+	Id            *string `json:"id,omitempty"`
+	Message       *string `json:"message,omitempty"`
 }
 
 // SketchAddLibraryResponse defines model for SketchAddLibraryResponse.

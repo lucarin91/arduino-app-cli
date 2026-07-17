@@ -77,7 +77,7 @@ func logsHandler(ctx context.Context, app app.ArduinoApp, tail *uint64, follow, 
 	for msg := range logsIter {
 		switch msg.Source {
 		case orchestrator.LogSourceBrick:
-			fmt.Fprintf(stdout, "[%s/%s] %s\n", msg.BrickID, msg.ContainerName, msg.Content)
+			fmt.Fprintf(stdout, "[%s (%s)] %s\n", msg.BrickID, msg.ContainerName, msg.Content)
 		default:
 			fmt.Fprintf(stdout, "[%s] %s\n", msg.ContainerName, msg.Content)
 		}

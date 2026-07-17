@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -28,6 +29,7 @@ import (
 
 	"github.com/arduino/arduino-app-cli/internal/api/handlers"
 	"github.com/arduino/arduino-app-cli/internal/api/models"
+	"github.com/arduino/arduino-app-cli/internal/e2e"
 	"github.com/arduino/arduino-app-cli/internal/e2e/client"
 )
 
@@ -653,7 +655,7 @@ func TestAppLogs(t *testing.T) {
 
 	createResp, err := httpClient.CreateAppWithResponse(
 		t.Context(),
-		&client.CreateAppParams{},
+		&client.CreateAppParams{SkipSketch: new(true)},
 		client.CreateAppRequest{
 			Icon:        new("📜"),
 			Name:        "app-with-logs",
@@ -666,10 +668,30 @@ func TestAppLogs(t *testing.T) {
 
 	startResp, err := httpClient.StartApp(t.Context(), appWithLogsId, nil)
 	require.NoError(t, err)
-	_, err = io.Copy(io.Discard, startResp.Body)
-	require.NoError(t, err, "Failed to unmarshal the JSON error response body")
-	startResp.Body.Close()
 	require.Equal(t, http.StatusOK, startResp.StatusCode)
+	for event, err := range e2e.ParseSSE(startResp.Body) {
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		require.NoError(t, err)
+		if event.Event == "close" {
+			break
+		}
+		if event.Event != "error" {
+			continue
+		}
+		var errData struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		}
+		require.NoError(t, json.Unmarshal(event.Data, &errData))
+		// SERVER_CLOSED is emitted by the SSE teardown on every stream; ignore it.
+		if errData.Code == "SERVER_CLOSED" {
+			continue
+		}
+		t.Fatalf("app failed to start: code=%s message=%s", errData.Code, errData.Message)
+	}
+	startResp.Body.Close()
 
 	t.Run("InvalidAppId_Fail", func(t *testing.T) {
 		var actualResponseBody models.ErrorResponse
@@ -732,15 +754,19 @@ func TestAppLogs(t *testing.T) {
 		defer resp.Body.Close()
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 
-		scanner := bufio.NewScanner(resp.Body)
-		for scanner.Scan() {
-			line := scanner.Text()
-			data, ok := strings.CutPrefix(line, "data: ")
-			if !ok {
+		for event, err := range e2e.ParseSSE(resp.Body) {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			require.NoError(t, err)
+			if event.Event == "close" {
+				break
+			}
+			if event.Event != "message" {
 				continue
 			}
 			var payload handlers.ResponseLogs
-			require.NoError(t, json.Unmarshal([]byte(data), &payload))
+			require.NoError(t, json.Unmarshal(event.Data, &payload))
 			require.NotEmpty(t, payload.ID, "id must be set")
 			require.NotEmpty(t, payload.Message, "message must be set")
 			return

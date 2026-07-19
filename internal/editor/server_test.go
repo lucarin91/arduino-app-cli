@@ -135,5 +135,5 @@ func TestServer_UnknownSubscriptionErrors(t *testing.T) {
 	require.Error(t, err)
 	jerr, ok := err.(*jsonrpc2.Error)
 	require.True(t, ok)
-	assert.Equal(t, int64(-32003), jerr.Code)
+	assert.Equal(t, int64(-32602), jerr.Code)
 }

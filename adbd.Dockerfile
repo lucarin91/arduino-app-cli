@@ -8,7 +8,8 @@ RUN apt-get update \
 RUN useradd -m --create-home --shell /bin/bash --user-group --groups sudo arduino && \
     echo "arduino:arduino" | chpasswd && \
     mkdir /home/arduino/ArduinoApps && \
-    chown -R arduino:arduino /home/arduino/ArduinoApps
+    chown -R arduino:arduino /home/arduino/ArduinoApps && \
+    echo 'MaxSessions 64' >> /etc/ssh/sshd_config
 
 COPY scripts/pong-server.py /usr/local/bin/pong-server.py
 RUN chmod +x /usr/local/bin/pong-server.py

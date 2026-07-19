@@ -9,20 +9,25 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path"
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/arduino/arduino-app-cli/internal/testtools"
+	"github.com/arduino/arduino-app-cli/internal/testtools/editorclient"
 	"github.com/arduino/arduino-app-cli/pkg/board/remote"
 	"github.com/arduino/arduino-app-cli/pkg/board/remote/adb"
 	"github.com/arduino/arduino-app-cli/pkg/board/remote/local"
 	"github.com/arduino/arduino-app-cli/pkg/board/remote/ssh"
+	"github.com/arduino/arduino-app-cli/pkg/board/remotefs"
 )
 
 func BenchmarkRemotePush(b *testing.B) {
@@ -43,9 +48,6 @@ func BenchmarkRemotePush(b *testing.B) {
 }
 
 // runPushBenchmark runs the given backends against the standard payload set.
-// Sub-benchmark names (transport/payload) are kept identical across
-// BenchmarkRemotePushNative and BenchmarkRemotePushFSWalk so they can be
-// compared directly with benchstat.
 func runPushBenchmark(b *testing.B, pushFunc func(ctx context.Context, conn remote.RemoteConn, src, dst string) error) {
 	name, adbPort, sshPort := testtools.StartAdbDContainer(b)
 	b.Cleanup(func() { testtools.StopAdbDContainer(b, name) })
@@ -186,9 +188,8 @@ func writeRandomFile(tb testing.TB, p string, size int) {
 	}
 }
 
-// fsWalkPush is a baseline implementation that recursively walks src using
-// io/fs.WalkDir and replicates the tree on the remote using only the
-// remote.FS interface (MkDirAll + WriteFile), without using Push.
+// fsWalkPush replicates the tree on the remote using only the remote.FS
+// interface (MkDirAll + WriteFile), without using Push.
 func fsWalkPush(rfs remote.FS, src, dst string) error {
 	srcFS := os.DirFS(src)
 	return fs.WalkDir(srcFS, ".", func(p string, d fs.DirEntry, err error) error {
@@ -212,12 +213,8 @@ func fsWalkPush(rfs remote.FS, src, dst string) error {
 	})
 }
 
-// legacyPush replicates the old ImportFolderToAppFromPath algorithm:
-//  1. walk src locally and collect dirs/files
-//  2. create all remote dirs concurrently (MkDirAll is recursive/idempotent)
-//  3. upload all files concurrently
-//
-// Kept here only for benchmarking purposes.
+// legacyPush replicates the old ImportFolderToAppFromPath algorithm, kept
+// for benchmarking.
 func legacyPush(ctx context.Context, conn remote.RemoteConn, src, dst string) error {
 	const maxConcurrentUploads = 8
 
@@ -313,4 +310,342 @@ func legacyPush(ctx context.Context, conn remote.RemoteConn, src, dst string) er
 	wg.Wait()
 
 	return firstErr
+}
+
+// listBackend is the minimal shape needed by BenchmarkRemoteList: seed +
+// list + cleanup against a target directory.
+type listBackend struct {
+	name string
+	// mkdir creates dir (idempotent).
+	mkdir func(dir string) error
+	// writeFile creates a file of the given size at path.
+	writeFile func(p string, size int) error
+	// list returns the entries directly under dir.
+	list func(dir string) (int, error)
+	// remove removes dir recursively.
+	remove func(dir string) error
+	// basePath is where seeded trees live for this backend.
+	basePath string
+}
+
+// SinkList prevents the compiler from eliding the list result.
+var SinkList int
+
+// writeRandom writes size bytes of random data to w.
+func writeRandom(w io.Writer, size int) error {
+	n, err := io.CopyN(w, rand.Reader, int64(size))
+	if err != nil {
+		return fmt.Errorf("failed to write random data: %w", err)
+	}
+	if n != int64(size) {
+		return fmt.Errorf("unexpected number of bytes written: got %d, want %d", n, size)
+	}
+	return nil
+}
+
+// remoteConnBackend adapts a remote.RemoteConn to listBackend.
+func remoteConnBackend(name, basePath string, conn remote.RemoteConn) listBackend {
+	return listBackend{
+		name:     name,
+		basePath: basePath,
+		mkdir:    conn.MkDirAll,
+		writeFile: func(p string, size int) error {
+			r, w := io.Pipe()
+			go func() { w.CloseWithError(writeRandom(w, size)) }()
+			return conn.WriteFile(r, p)
+		},
+		list: func(dir string) (int, error) {
+			entries, err := conn.List(dir)
+			return len(entries), err
+		},
+		remove: conn.Remove,
+	}
+}
+
+// editorBackend starts a dedicated editor-server container (with adbd
+// alongside), seeds files over adb, and lists via fs.walk depth=1 over WS.
+// The dialed client is returned so tree benchmarks can reuse it.
+func editorBackend(tb testing.TB) (listBackend, *editorclient.Client) {
+	tb.Helper()
+
+	name, editorPort, adbPort := testtools.StartEditorContainer(tb)
+	tb.Cleanup(func() { testtools.StopEditorContainer(tb, name) })
+
+	adbConn, err := adb.FromHost("localhost:"+adbPort, "")
+	require.NoError(tb, err)
+
+	addr := "localhost:" + editorPort
+	editorclient.WaitReady(tb, addr)
+	client := editorclient.Dial(tb, addr)
+	tb.Cleanup(client.Close)
+
+	const basePath = "/home/arduino"
+	seed := remoteConnBackend("editor", basePath, adbConn)
+	seed.list = func(dir string) (int, error) {
+		entries, err := client.Walk(map[string]any{"path": dir, "depth": 1})
+		if err != nil {
+			return 0, err
+		}
+		// fs.walk includes "." for the root itself; List does not.
+		return len(entries) - 1, nil
+	}
+	return seed, client
+}
+
+// BenchmarkRemoteList measures directory-listing latency across backends.
+// The editor backend calls fs.walk with depth=1 to match List semantically.
+func BenchmarkRemoteList(b *testing.B) {
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	name, adbPort, sshPort := testtools.StartAdbDContainer(b)
+	b.Cleanup(func() { testtools.StopAdbDContainer(b, name) })
+
+	adbConn, err := adb.FromHost("localhost:"+adbPort, "")
+	require.NoError(b, err)
+	sshConn, err := ssh.FromHost("arduino", "arduino", "127.0.0.1:"+sshPort)
+	require.NoError(b, err)
+
+	editorBE, _ := editorBackend(b)
+	backends := []listBackend{
+		remoteConnBackend("adb", "/home/arduino", adbConn),
+		remoteConnBackend("ssh", "./", sshConn),
+		remoteConnBackend("local", b.TempDir(), &local.LocalConnection{}),
+		editorBE,
+	}
+
+	for _, be := range backends {
+		b.Run(be.name, func(b *testing.B) {
+			remoteBase := path.Join(be.basePath, "bench_list_"+be.name)
+			_ = be.remove(remoteBase)
+			require.NoError(b, be.mkdir(remoteBase))
+			b.Cleanup(func() { _ = be.remove(remoteBase) })
+
+			for _, count := range []int{10, 50, 200} {
+				b.Run(fmt.Sprintf("%dentries", count), func(b *testing.B) {
+					dir := path.Join(remoteBase, fmt.Sprintf("entries_%d", count))
+					require.NoError(b, be.mkdir(dir))
+					for i := range count {
+						p := path.Join(dir, fmt.Sprintf("file_%04d.bin", i))
+						require.NoError(b, be.writeFile(p, 1024))
+					}
+
+					b.ResetTimer()
+					for i := 0; i < b.N; i++ {
+						n, err := be.list(dir)
+						require.NoError(b, err)
+						require.Equal(b, count, n)
+						SinkList = n
+					}
+				})
+			}
+		})
+	}
+}
+
+// legacyBuildFileTreeRecursive vendors the client-side walker from
+// cloud-editor-mono (standalone-apps/app-lab-desktop/internal/fs/filetree.go),
+// with light trimming (no mime, no ignore) and error propagation fixed.
+// Kept as one self-contained function for easy reference in the tree bench.
+func legacyBuildFileTreeRecursive(fss fs.FS, currentPath string) (int, error) {
+	const maxConcurrentDirReads = 8
+
+	type treeNode struct {
+		Name       string
+		Size       int64
+		IsDir      bool
+		ModifiedAt string
+		Children   []treeNode
+	}
+
+	var buildFileTreeRecursive func(currentPath string, entry fs.DirEntry, sem chan struct{}) (*treeNode, error)
+	buildFileTreeRecursive = func(currentPath string, entry fs.DirEntry, sem chan struct{}) (*treeNode, error) {
+		if entry != nil && !entry.IsDir() {
+			info, err := entry.Info()
+			if err != nil {
+				return nil, err
+			}
+			return &treeNode{
+				Name:       info.Name(),
+				Size:       info.Size(),
+				ModifiedAt: info.ModTime().Format(time.RFC3339),
+			}, nil
+		}
+
+		sem <- struct{}{}
+		f, err := fss.Open(currentPath)
+		if err != nil {
+			<-sem
+			return nil, err
+		}
+		info, err := f.Stat()
+		if err != nil {
+			<-sem
+			_ = f.Close()
+			return nil, err
+		}
+		node := treeNode{
+			Name:       info.Name(),
+			Size:       info.Size(),
+			IsDir:      true,
+			ModifiedAt: info.ModTime().Format(time.RFC3339),
+		}
+		entries, err := f.(fs.ReadDirFile).ReadDir(0)
+		_ = f.Close()
+		<-sem
+		if err != nil {
+			return nil, err
+		}
+
+		type nodeResult struct {
+			node *treeNode
+			err  error
+		}
+		results := make([]nodeResult, len(entries))
+		var wg sync.WaitGroup
+		for i, e := range entries {
+			childPath := path.Join(currentPath, e.Name())
+			if e.IsDir() {
+				wg.Add(1)
+				go func(idx int, de fs.DirEntry, cp string) {
+					defer wg.Done()
+					child, err := buildFileTreeRecursive(cp, de, sem)
+					results[idx] = nodeResult{node: child, err: err}
+				}(i, e, childPath)
+			} else {
+				child, err := buildFileTreeRecursive(childPath, e, sem)
+				results[i] = nodeResult{node: child, err: err}
+			}
+		}
+		wg.Wait()
+
+		for _, r := range results {
+			if r.err != nil {
+				return nil, r.err
+			}
+			if r.node != nil {
+				node.Children = append(node.Children, *r.node)
+			}
+		}
+		return &node, nil
+	}
+
+	var countTree func(*treeNode) int
+	countTree = func(n *treeNode) int {
+		if n == nil {
+			return 0
+		}
+		total := 1
+		for i := range n.Children {
+			total += countTree(&n.Children[i])
+		}
+		return total
+	}
+
+	sem := make(chan struct{}, maxConcurrentDirReads)
+	root, err := buildFileTreeRecursive(currentPath, nil, sem)
+	if err != nil {
+		return 0, err
+	}
+	return countTree(root), nil
+}
+
+// seedTree creates a synthetic tree using the backend's mkdir/writeFile.
+// filesPerDir=5, dirsPerLevel=4, depth=3 → 85 dirs, 425 files.
+func seedTree(b *testing.B, be listBackend, root string, dirsPerLevel, depth, filesPerDir, fileSize int) {
+	b.Helper()
+	require.NoError(b, be.mkdir(root))
+	for i := 0; i < filesPerDir; i++ {
+		require.NoError(b, be.writeFile(path.Join(root, fmt.Sprintf("file_%02d.bin", i)), fileSize))
+	}
+	if depth == 0 {
+		return
+	}
+	for i := 0; i < dirsPerLevel; i++ {
+		child := path.Join(root, fmt.Sprintf("dir_%02d", i))
+		seedTree(b, be, child, dirsPerLevel, depth-1, filesPerDir, fileSize)
+	}
+}
+
+// BenchmarkRemoteTree measures a full recursive tree walk. ssh/adb/local
+// use the vendored client-side walker; editor does the whole walk in a
+// single fs.walk request.
+func BenchmarkRemoteTree(b *testing.B) {
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	name, adbPort, sshPort := testtools.StartAdbDContainer(b)
+	b.Cleanup(func() { testtools.StopAdbDContainer(b, name) })
+
+	adbConn, err := adb.FromHost("localhost:"+adbPort, "")
+	require.NoError(b, err)
+	sshConn, err := ssh.FromHost("arduino", "arduino", "127.0.0.1:"+sshPort)
+	require.NoError(b, err)
+	editorBE, editorCli := editorBackend(b)
+
+	type treeBackend struct {
+		name     string
+		seed     listBackend
+		basePath string
+		walkAll  func(dir string) (int, error)
+	}
+
+	walkViaConn := func(conn remote.RemoteConn) func(string) (int, error) {
+		return func(dir string) (int, error) {
+			return legacyBuildFileTreeRecursive(remotefs.New(dir, conn), ".")
+		}
+	}
+
+	backends := []treeBackend{
+		{
+			name:     "adb",
+			seed:     remoteConnBackend("adb", "/home/arduino", adbConn),
+			basePath: "/home/arduino",
+			walkAll:  walkViaConn(adbConn),
+		},
+		{
+			name:     "ssh",
+			seed:     remoteConnBackend("ssh", "./", sshConn),
+			basePath: "./",
+			walkAll:  walkViaConn(sshConn),
+		},
+		{
+			name:     "editor",
+			seed:     editorBE,
+			basePath: editorBE.basePath,
+			walkAll: func(dir string) (int, error) {
+				entries, err := editorCli.Walk(map[string]any{"path": dir})
+				if err != nil {
+					return 0, err
+				}
+				return len(entries), nil
+			},
+		},
+	}
+
+	const (
+		dirsPerLevel = 4
+		depth        = 3
+		filesPerDir  = 5
+		fileSize     = 1024
+	)
+
+	for _, be := range backends {
+		b.Run(be.name, func(b *testing.B) {
+			root := path.Join(be.basePath, "bench_tree_"+be.name)
+			_ = be.seed.remove(root)
+			seedTree(b, be.seed, root, dirsPerLevel, depth, filesPerDir, fileSize)
+			b.Cleanup(func() { _ = be.seed.remove(root) })
+
+			// Sanity: all backends must see the same tree.
+			want, err := be.walkAll(root)
+			require.NoError(b, err)
+
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				n, err := be.walkAll(root)
+				require.NoError(b, err)
+				require.Equal(b, want, n)
+				SinkList = n
+			}
+		})
+	}
 }

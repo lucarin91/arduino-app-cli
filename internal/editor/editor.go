@@ -16,6 +16,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -30,12 +31,17 @@ const (
 	serverVersion   = "0.1.0"
 
 	mHello, mWatch, mUnwatch  = "hello", "fs.watch", "fs.unwatch"
+	mWalk                     = "fs.walk"
 	nChanged, nWatchErr       = "fs.changed", "fs.watchError"
 	pingInterval, pongTimeout = 30 * time.Second, 10 * time.Second
 
-	codeWatchLimit    = -32002
-	codeNotSubscribed = -32003
-	codeWatcherFail   = -32004
+	// JSON-RPC error codes aligned with editor-service-reference.md.
+	codeEtagMismatch      = -32002
+	codeWatchLimit        = -32003 // watchLimitReached
+	codeUnknownCapability = -32004
+	codeNotFound          = -32005
+	codePermissionDenied  = -32006
+	codeEncodingError     = -32007
 )
 
 type Config struct {
@@ -125,7 +131,7 @@ func (s *session) handle(ctx context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Re
 	case mHello:
 		return map[string]any{
 			"serverName": serverName, "serverVersion": serverVersion,
-			"protocol": protocolVersion, "capabilities": []string{"fs.watch"},
+			"protocol": protocolVersion, "capabilities": []string{"fs.watch", "fs.walk"},
 			"limits": map[string]int{"maxWatches": s.cfg.MaxWatches},
 		}, nil
 
@@ -154,7 +160,7 @@ func (s *session) handle(ctx context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Re
 		w, err := newWatchSub(subCtx, target, p, s.cfg.Logger)
 		if err != nil {
 			cancel()
-			return nil, &jsonrpc2.Error{Code: codeWatcherFail, Message: err.Error()}
+			return nil, classifyFSError(err)
 		}
 		var idb [8]byte
 		_, _ = rand.Read(idb[:])
@@ -178,11 +184,44 @@ func (s *session) handle(ctx context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Re
 		delete(s.subs, p.SubscriptionID)
 		s.mu.Unlock()
 		if !ok {
-			return nil, &jsonrpc2.Error{Code: codeNotSubscribed, Message: "unknown subscriptionId"}
+			return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeInvalidParams, Message: "unknown subscriptionId"}
 		}
 		sub.cancel()
 		_ = sub.w.fsw.Close()
 		return struct{}{}, nil
+
+	case mWalk:
+		var p walkParams
+		if req.Params != nil {
+			if err := json.Unmarshal(*req.Params, &p); err != nil {
+				return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeInvalidParams, Message: err.Error()}
+			}
+		}
+		if p.Path == "" {
+			return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeInvalidParams, Message: "path is required"}
+		}
+		target := paths.New(p.Path)
+		if !target.IsAbs() {
+			return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeInvalidParams, Message: "path must be absolute"}
+		}
+		entries, nextCursor, err := walk(target, walkOptions{
+			Depth:    p.Depth,
+			Includes: p.Includes,
+			Excludes: p.Excludes,
+			Cursor:   derefString(p.Cursor),
+			Limit:    derefInt(p.Limit),
+		})
+		if err != nil {
+			return nil, classifyFSError(err)
+		}
+		result := walkResult{Entries: make([]fileEntry, len(entries))}
+		for i, e := range entries {
+			result.Entries[i] = fileEntry(e)
+		}
+		if nextCursor != "" {
+			result.NextCursor = nextCursor
+		}
+		return result, nil
 	}
 	return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeMethodNotFound, Message: "unknown method: " + req.Method}
 }
@@ -222,11 +261,60 @@ type watchParams struct {
 	DebounceMs int      `json:"debounceMs,omitempty"`
 }
 
+type walkParams struct {
+	Path     string   `json:"path"`
+	Depth    *int     `json:"depth,omitempty"`
+	Includes []string `json:"includes,omitempty"`
+	Excludes []string `json:"excludes,omitempty"`
+	Cursor   *string  `json:"cursor,omitempty"`
+	Limit    *int     `json:"limit,omitempty"`
+}
+
+type walkResult struct {
+	Entries    []fileEntry `json:"entries"`
+	NextCursor string      `json:"nextCursor,omitempty"`
+}
+
+type fileEntry struct {
+	Path  string    `json:"path"`
+	Size  int64     `json:"size"`
+	MTime time.Time `json:"mtime"`
+	IsDir bool      `json:"isDir"`
+	Depth int       `json:"depth"`
+}
+
 type changeEvent struct {
 	Type    string      `json:"type"` // create|update|delete|rename
 	Path    *paths.Path `json:"path"`
 	IsDir   bool        `json:"isDir"`
 	OldPath *paths.Path `json:"oldPath,omitempty"`
+}
+
+// classifyFSError maps a filesystem error to the JSON-RPC codes defined in
+// editor-service-reference.md.
+func classifyFSError(err error) *jsonrpc2.Error {
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		return &jsonrpc2.Error{Code: codeNotFound, Message: err.Error()}
+	case errors.Is(err, os.ErrPermission):
+		return &jsonrpc2.Error{Code: codePermissionDenied, Message: err.Error()}
+	default:
+		return &jsonrpc2.Error{Code: jsonrpc2.CodeInternalError, Message: err.Error()}
+	}
+}
+
+func derefString(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
+func derefInt(p *int) int {
+	if p == nil {
+		return 0
+	}
+	return *p
 }
 
 // wsStream adapts *websocket.Conn to jsonrpc2.ObjectStream (one JSON per text frame).

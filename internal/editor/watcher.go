@@ -315,3 +315,8 @@ func matchGlobs(rel string, includes, excludes []string) bool {
 	}
 	return len(includes) == 0 || slices.ContainsFunc(includes, match)
 }
+
+func matchExcluded(rel string, excludes []string) bool {
+	match := func(pat string) bool { ok, _ := doublestar.PathMatch(pat, rel); return ok }
+	return slices.ContainsFunc(excludes, match)
+}

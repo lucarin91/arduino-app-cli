@@ -78,30 +78,24 @@ func AppLogs(
 			continue
 		}
 		composeFilePath, found := brick.GetComposeFile()
-		if !found {
-			slog.Warn("brick compose id not valid", slog.String("brick_id", brick.ID))
-			continue
-		}
-		if !composeFilePath.Exist() {
-			slog.Debug("Brick compose file not found", slog.String("module", brick.ID), slog.String("path", composeFilePath.String()))
-			continue
-		}
-
-		services, err := extractServicesFromComposeFile(composeFilePath)
-		if err != nil {
-			return helpers.EmptyIter[LogMessage](), err
-		}
-		for _, s := range services {
-			serviceToBrickMapping[s.name] = brick.ID
+		if found && composeFilePath.Exist() {
+			services, err := extractServicesFromComposeFile(composeFilePath)
+			if err != nil {
+				return helpers.EmptyIter[LogMessage](), err
+			}
+			for _, s := range services {
+				serviceToBrickMapping[s.name] = brick.ID
+			}
 		}
 
 		// Also attribute containers of Arduino Services required by this brick.
-		requiredServices, err := brick.GetMatchingService(bricksindex.BrickInstance{Model: appBrick.Model})
+		requiredServices, err := brick.GetMatchingService(appBrick.Model)
 		if err != nil {
 			slog.Warn("failed to get required services for brick", slog.String("brick_id", brick.ID), slog.Any("error", err))
 			continue
 		}
 		for _, serviceID := range requiredServices {
+			slog.Debug("brick requires service", slog.String("brick_id", brick.ID), slog.String("service_id", serviceID))
 			service, found := servicesIndex.FindServiceByID(serviceID)
 			if !found {
 				continue
@@ -110,6 +104,7 @@ func AppLogs(
 			if !ok {
 				continue
 			}
+			slog.Debug("loading service compose", slog.String("service_id", serviceID), slog.String("path", serviceCompose.String()))
 			services, err := extractServicesFromComposeFile(serviceCompose)
 			if err != nil {
 				slog.Warn("failed to load service compose", slog.String("service_id", serviceID), slog.Any("error", err))

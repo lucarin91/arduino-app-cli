@@ -6,7 +6,6 @@
 package orchestrator
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -231,9 +230,7 @@ func generateMainComposeFile(
 		}
 
 		// 2. Retrieve the required singleton services
-		matchingServices, err := idxBrick.GetMatchingService(bricksindex.BrickInstance{
-			Model: cmp.Or(brick.Model, idxBrick.ModelName),
-		})
+		matchingServices, err := idxBrick.GetMatchingService(brick.Model)
 		if err != nil {
 			return fmt.Errorf("failed to get required services for brick %s: %w", brick.ID, err)
 		}

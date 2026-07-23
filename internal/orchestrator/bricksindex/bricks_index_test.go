@@ -576,14 +576,14 @@ func TestGetMatchingService(t *testing.T) {
 	tests := []struct {
 		name             string
 		requiresServices []RequiresService
-		brickInstance    BrickInstance
+		model            string
 		wantServices     []string
 		wantErr          bool
 	}{
 		{
 			name:             "no requires_services returns empty slice",
 			requiresServices: nil,
-			brickInstance:    BrickInstance{Model: "some-model"},
+			model:    "some-model",
 			wantServices:     []string{},
 		},
 		{
@@ -591,7 +591,7 @@ func TestGetMatchingService(t *testing.T) {
 			requiresServices: []RequiresService{
 				{ID: "service-a", When: nil},
 			},
-			brickInstance: BrickInstance{Model: "any-model"},
+			model: "any-model",
 			wantServices:  []string{"service-a"},
 		},
 		{
@@ -599,7 +599,7 @@ func TestGetMatchingService(t *testing.T) {
 			requiresServices: []RequiresService{
 				{ID: "service-b", When: &RequiresServiceMatch{Model: nil}},
 			},
-			brickInstance: BrickInstance{Model: "any-model"},
+			model: "any-model",
 			wantServices:  []string{"service-b"},
 		},
 		{
@@ -607,7 +607,7 @@ func TestGetMatchingService(t *testing.T) {
 			requiresServices: []RequiresService{
 				{ID: "service-c", When: &RequiresServiceMatch{Model: new("mobilenet-*")}},
 			},
-			brickInstance: BrickInstance{Model: "mobilenet-image-classification"},
+			model: "mobilenet-image-classification",
 			wantServices:  []string{"service-c"},
 		},
 		{
@@ -615,7 +615,7 @@ func TestGetMatchingService(t *testing.T) {
 			requiresServices: []RequiresService{
 				{ID: "service-d", When: &RequiresServiceMatch{Model: new("mobilenet-*")}},
 			},
-			brickInstance: BrickInstance{Model: "yolo-object-detection"},
+			model: "yolo-object-detection",
 			wantServices:  []string{},
 		},
 		{
@@ -624,7 +624,7 @@ func TestGetMatchingService(t *testing.T) {
 				{ID: "service-e", When: &RequiresServiceMatch{Model: new("mobilenet-*")}},
 				{ID: "service-f", When: &RequiresServiceMatch{Model: new("yolo-*")}},
 			},
-			brickInstance: BrickInstance{Model: "yolo-object-detection"},
+			model: "yolo-object-detection",
 			wantServices:  []string{"service-f"},
 		},
 		{
@@ -633,7 +633,7 @@ func TestGetMatchingService(t *testing.T) {
 				{ID: "service-g", When: &RequiresServiceMatch{Model: new("mobilenet-*")}},
 				{ID: "service-h", When: nil},
 			},
-			brickInstance: BrickInstance{Model: "mobilenet-image-classification"},
+			model: "mobilenet-image-classification",
 			wantServices:  []string{"service-g", "service-h"},
 		},
 		{
@@ -642,7 +642,7 @@ func TestGetMatchingService(t *testing.T) {
 				{ID: "service-i", When: &RequiresServiceMatch{Model: new("mobilenet-*")}},
 				{ID: "service-j", When: &RequiresServiceMatch{Model: new("yolo-*")}},
 			},
-			brickInstance: BrickInstance{Model: "resnet-classification"},
+			model: "resnet-classification",
 			wantServices:  []string{},
 		},
 		{
@@ -650,7 +650,7 @@ func TestGetMatchingService(t *testing.T) {
 			requiresServices: []RequiresService{
 				{ID: "service-k", When: &RequiresServiceMatch{Model: new("[invalid")}},
 			},
-			brickInstance: BrickInstance{Model: "any-model"},
+			model: "any-model",
 			wantErr:       true,
 		},
 	}
@@ -658,7 +658,7 @@ func TestGetMatchingService(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			brick := Brick{RequiresServices: tt.requiresServices}
-			got, err := brick.GetMatchingService(tt.brickInstance)
+			got, err := brick.GetMatchingService(tt.model)
 			if tt.wantErr {
 				require.Error(t, err)
 			} else {
